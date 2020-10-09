@@ -22,6 +22,11 @@ import (
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 )
 
+var (
+	errAmtZero           = errors.New("amount must not positive")
+	errInsufficientFunds = errors.New("insufficient funds")
+)
+
 // Wallet is a holder for keys and UTXOs for the Avalanche DAG.
 type Wallet struct {
 	networkID uint32
@@ -34,6 +39,7 @@ type Wallet struct {
 	keychain *secp256k1fx.Keychain // Mapping from public address to the SigningKeys
 	utxoSet  *UTXOSet              // Mapping from utxoIDs to UTXOs
 
+	// Asset ID --> Balance of this asset held by this wallet
 	balance map[[32]byte]uint64
 	txFee   uint64
 
@@ -71,8 +77,8 @@ func NewWallet(log logging.Logger, networkID uint32, chainID ids.ID, txFee uint6
 // Codec returns the codec used for serialization
 func (w *Wallet) Codec() codec.Codec { return w.codec }
 
-// GetAddress returns one of the addresses this wallet manages. If no address
-// exists, one will be created.
+// GetAddress returns one of the addresses this wallet manages.
+// If no address exists, one will be created.
 func (w *Wallet) GetAddress() (ids.ShortID, error) {
 	if w.keychain.Addrs.Len() == 0 {
 		return w.CreateAddress()
@@ -92,7 +98,7 @@ func (w *Wallet) CreateAddress() (ids.ShortID, error) {
 func (w *Wallet) ImportKey(sk *crypto.PrivateKeySECP256K1R) { w.keychain.Add(sk) }
 
 // AddUTXO adds a new UTXO to this wallet if this wallet may spend it
-// The UTXO's output must be an OutputPayment
+// The UTXO's output must be an avax.TransferableOut
 func (w *Wallet) AddUTXO(utxo *avax.UTXO) {
 	out, ok := utxo.Out.(avax.TransferableOut)
 	if !ok {
@@ -128,9 +134,10 @@ func (w *Wallet) RemoveUTXO(utxoID ids.ID) {
 func (w *Wallet) Balance(assetID ids.ID) uint64 { return w.balance[assetID.Key()] }
 
 // CreateTx returns a tx that sends [amount] of [assetID] to [destAddr]
+// Any change is sent to an address controlled by this wallet
 func (w *Wallet) CreateTx(assetID ids.ID, amount uint64, destAddr ids.ShortID) (*avm.Tx, error) {
 	if amount == 0 {
-		return nil, errors.New("invalid amount")
+		return nil, errAmtZero
 	}
 
 	amountSpent := uint64(0)
@@ -171,7 +178,7 @@ func (w *Wallet) CreateTx(assetID ids.ID, amount uint64, destAddr ids.ShortID) (
 	}
 
 	if amountSpent < amount {
-		return nil, errors.New("insufficient funds")
+		return nil, errInsufficientFunds
 	}
 
 	avax.SortTransferableInputsWithSigners(ins, keys)
@@ -217,10 +224,8 @@ func (w *Wallet) CreateTx(assetID ids.ID, amount uint64, destAddr ids.ShortID) (
 	return tx, tx.SignSECP256K1Fx(w.codec, keys)
 }
 
-// GenerateTxs generates the transactions that will be sent
-// during the test
-// Generate them all on test initialization so tx generation is not bottleneck
-// in testing
+// GenerateTxs generates transactions that will be sent during the test.
+// [numTxs] are generated. Each sends 1 unit of [assetID].
 func (w *Wallet) GenerateTxs(numTxs int, assetID ids.ID) error {
 	w.log.Info("Generating %d transactions", numTxs)
 
@@ -251,6 +256,7 @@ func (w *Wallet) GenerateTxs(numTxs int, assetID ids.ID) error {
 			w.AddUTXO(utxo)
 		}
 
+		// Periodically log progress
 		if numGenerated := i + 1; numGenerated%frequency == 0 {
 			w.log.Info("Generated %d out of %d transactions", numGenerated, numTxs)
 		}
@@ -263,6 +269,7 @@ func (w *Wallet) GenerateTxs(numTxs int, assetID ids.ID) error {
 }
 
 // NextTx returns the next tx to be sent as part of xput test
+// Returns nil if there are no more transactions
 func (w *Wallet) NextTx() *avm.Tx {
 	if len(w.txs) == 0 {
 		return nil

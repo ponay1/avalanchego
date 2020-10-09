@@ -11,10 +11,10 @@ import (
 	"github.com/ava-labs/avalanchego/vms/components/avax"
 )
 
-// UTXOSet ...
+// UTXOSet is a set of UTXOs
 type UTXOSet struct {
-	// Key: The id of a UTXO
-	// Value: The index in UTXOs of that UTXO
+	// Key: The ID of a UTXO
+	// Value: The index in [UTXOs] of that UTXO
 	utxoMap map[[32]byte]int
 
 	// List of UTXOs in this set
@@ -22,7 +22,7 @@ type UTXOSet struct {
 	UTXOs []*avax.UTXO
 }
 
-// Put ...
+// Put a UTXO in this UTXO set
 func (us *UTXOSet) Put(utxo *avax.UTXO) {
 	if us.utxoMap == nil {
 		us.utxoMap = make(map[[32]byte]int)
@@ -35,7 +35,7 @@ func (us *UTXOSet) Put(utxo *avax.UTXO) {
 	}
 }
 
-// Get ...
+// Get a UTXO from this UTXO set
 func (us *UTXOSet) Get(id ids.ID) *avax.UTXO {
 	if us.utxoMap == nil {
 		return nil
@@ -47,7 +47,8 @@ func (us *UTXOSet) Get(id ids.ID) *avax.UTXO {
 	return nil
 }
 
-// Remove ...
+// Remove a UTXO from this UTXO set
+// If the UTXO is not in the set, does nothing
 func (us *UTXOSet) Remove(id ids.ID) *avax.UTXO {
 	i, ok := us.utxoMap[id.Key()]
 	if !ok {
@@ -89,4 +90,5 @@ func (us *UTXOSet) PrefixedString(prefix string) string {
 	return s.String()
 }
 
+// String returns a string representation of this UTXO set
 func (us *UTXOSet) String() string { return us.PrefixedString("  ") }
