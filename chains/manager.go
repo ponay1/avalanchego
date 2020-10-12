@@ -58,6 +58,10 @@ type Manager interface {
 	// Create a chain in the future
 	CreateChain(ChainParameters)
 
+	// Get a chain's handler
+	// Returns an error if the chain does not exist
+	GetChain(ids.ID) (*router.Handler, error)
+
 	// Create a chain now
 	ForceCreateChain(ChainParameters)
 
@@ -144,16 +148,13 @@ type manager struct {
 	blockedChains []ChainParameters
 
 	chainsLock sync.Mutex
+
 	// Key: Chain's ID
 	// Value: The chain
 	chains map[[32]byte]*router.Handler
 }
 
-// New returns a new Manager where:
-//     <db> is this node's database
-//     <sender> sends messages to other validators
-//     <validators> validate this chain
-// TODO: Make this function take less arguments
+// New returns a new Manager with the given config
 func New(config *ManagerConfig) Manager {
 	m := &manager{
 		ManagerConfig: *config,
@@ -173,6 +174,20 @@ func (m *manager) CreateChain(chain ChainParameters) {
 	} else {
 		m.ForceCreateChain(chain)
 	}
+}
+
+// Get a chain (its handler, actually)
+// Returns an error if the chain doesn't exist
+func (m *manager) GetChain(id ids.ID) (*router.Handler, error) {
+	m.chainsLock.Lock()
+	defer m.chainsLock.Unlock()
+
+	chain, ok := m.chains[id.Key()]
+	if !ok {
+		return nil, fmt.Errorf("chain %s not found", id)
+	}
+	return chain, nil
+
 }
 
 // Create a chain

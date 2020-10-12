@@ -329,6 +329,15 @@ func (t *Transitive) QueryFailed(vdr ids.ShortID, requestID uint32) error {
 	return t.Chits(vdr, requestID, ids.Set{})
 }
 
+// Issue a transaction
+func (t *Transitive) Issue(tx snowstorm.Tx) error {
+	if !t.Ctx.IsBootstrapped() {
+		t.Ctx.Log.Debug("dropping Issue due to bootstrapping")
+		return nil
+	}
+	return t.batch([]snowstorm.Tx{tx}, false /*=force*/, false /*=empty*/)
+}
+
 // Notify implements the Engine interface
 func (t *Transitive) Notify(msg common.Message) error {
 	if !t.Ctx.IsBootstrapped() {
@@ -346,8 +355,7 @@ func (t *Transitive) Notify(msg common.Message) error {
 }
 
 // If there are pending transactions from the VM, issue them.
-// If we're not already at the limit for number of concurrent polls, issue a new
-// query.
+// If we're not already at the limit for number of concurrent polls, issue a new query.
 func (t *Transitive) repoll() error {
 	if t.polls.Len() >= t.Params.ConcurrentRepolls || t.errs.Errored() {
 		return nil
@@ -494,7 +502,7 @@ func (t *Transitive) issue(vtx avalanche.Vertex) error {
 	return t.errs.Err
 }
 
-// Batchs [txs] into vertices and issue them.
+// Batch [txs] into vertices and issue them.
 // If [force] is true, forces each tx to be issued.
 // Otherwise, some txs may not be put into vertices that are issued.
 // If [empty], will always result in a new poll.

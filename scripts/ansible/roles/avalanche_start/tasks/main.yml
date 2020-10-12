@@ -6,8 +6,8 @@
       --api-keystore-enabled="{{ api_keystore_enabled }}"
       --api-metrics-enabled="{{ api_metrics_enabled }}"
       --tx-fee="{{ tx_fee }}"
-      --min-validator-stake="{{ min_validator_stake }}"
-      --min-delegator-stake="{{ min_delegator_stake }}"
+      --min-validator-stake="1000000000"
+      --min-delegator-stake="1000000000"
       --assertions-enabled="{{ assertions_enabled }}"
       --signature-verification-enabled="{{ signature_verification_enabled }}"
       --db-enabled="{{ db_enabled }}"
@@ -38,6 +38,7 @@
       --api-ipcs-enabled="{{ api_ipcs_enabled }}"
       --xput-server-enabled="{{ xput_server_enabled }}"
       --xput-server-port="{{ xput_server_port }}"
+      --max-non-staker-pending-msgs=500
       >/dev/null 2>&1 &
   environment:
     PATH: /sbin:/usr/sbin:/bin:/usr/bin:/usr/local/bin:/snap/bin

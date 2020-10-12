@@ -19,31 +19,24 @@ type EngineTest struct {
 	CantStartup,
 	CantGossip,
 	CantShutdown,
-
 	CantContext,
-
 	CantNotify,
-
 	CantGetAcceptedFrontier,
 	CantGetAcceptedFrontierFailed,
 	CantAcceptedFrontier,
-
 	CantGetAccepted,
 	CantGetAcceptedFailed,
 	CantAccepted,
-
 	CantGet,
 	CantGetAncestors,
 	CantGetFailed,
 	CantGetAncestorsFailed,
 	CantPut,
 	CantMultiPut,
-
 	CantPushQuery,
 	CantPullQuery,
 	CantQueryFailed,
-	CantChits bool
-
+	CantChits,
 	CantConnected,
 	CantDisconnected bool
 
@@ -65,35 +58,27 @@ var _ Engine = &EngineTest{}
 // Default ...
 func (e *EngineTest) Default(cant bool) {
 	e.CantIsBootstrapped = cant
-
 	e.CantStartup = cant
 	e.CantGossip = cant
 	e.CantShutdown = cant
-
 	e.CantContext = cant
-
 	e.CantNotify = cant
-
 	e.CantGetAcceptedFrontier = cant
 	e.CantGetAcceptedFrontierFailed = cant
 	e.CantAcceptedFrontier = cant
-
 	e.CantGetAccepted = cant
 	e.CantGetAcceptedFailed = cant
 	e.CantAccepted = cant
-
 	e.CantGet = cant
 	e.CantGetAncestors = cant
 	e.CantGetAncestorsFailed = cant
 	e.CantGetFailed = cant
 	e.CantPut = cant
 	e.CantMultiPut = cant
-
 	e.CantPushQuery = cant
 	e.CantPullQuery = cant
 	e.CantQueryFailed = cant
 	e.CantChits = cant
-
 	e.CantConnected = cant
 	e.CantDisconnected = cant
 }

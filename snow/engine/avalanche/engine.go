@@ -4,6 +4,7 @@
 package avalanche
 
 import (
+	"github.com/ava-labs/avalanchego/snow/consensus/snowstorm"
 	"github.com/ava-labs/avalanchego/snow/engine/common"
 )
 
@@ -19,4 +20,7 @@ type Engine interface {
 
 	// Initialize this engine.
 	Initialize(Config)
+
+	// Issue a transaction
+	Issue(tx snowstorm.Tx) error
 }

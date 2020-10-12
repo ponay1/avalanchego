@@ -610,8 +610,18 @@ func (n *Node) initMetricsAPI() error {
 		return err
 	}
 	n.DB = db
-
 	return n.APIServer.AddRoute(handler, &sync.RWMutex{}, "metrics", "", n.HTTPLog)
+}
+
+// initXputAPI initializes the xput test API
+func (n *Node) initXputAPI() error {
+	if !n.Config.XputAPIEnabled {
+		n.Log.Info("skipping xput API initialization because it has been disabled")
+		return nil
+	}
+	n.Log.Info("initializing xput API")
+	//service, err := xput.NewService()
+	return errors.New("TODO")
 }
 
 // initAdminAPI initializes the Admin API service
@@ -774,6 +784,9 @@ func (n *Node) Initialize(config *Config, logger logging.Logger, logFactory logg
 	if err := n.initMetricsAPI(); err != nil { // Start the Metrics API
 		return fmt.Errorf("couldn't initialize metrics API: %w", err)
 	}
+	if err := n.initXputAPI(); err != nil {
+		return fmt.Errorf("couldn't initialize xput API: %w", err)
+	}
 
 	n.initSharedMemory() // Initialize shared memory
 
@@ -806,6 +819,9 @@ func (n *Node) Initialize(config *Config, logger logging.Logger, logFactory logg
 	}
 	if err := n.initIPCAPI(); err != nil { // Start the IPC API
 		return fmt.Errorf("couldn't initialize the IPC API: %w", err)
+	}
+	if err := n.initXputAPI(); err != nil { // Start the throughput test server
+		return fmt.Errorf("couldn't initialize the xput API: %w", err)
 	}
 	if err := n.initAliases(genesisBytes); err != nil { // Set up aliases
 		return fmt.Errorf("couldn't initialize aliases: %w", err)

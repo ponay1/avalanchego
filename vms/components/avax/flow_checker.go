@@ -5,6 +5,7 @@ package avax
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/math"
@@ -48,7 +49,11 @@ func (fc *FlowChecker) Verify() error {
 		for assetID, producedAssetAmount := range fc.produced {
 			consumedAssetAmount := fc.consumed[assetID]
 			if producedAssetAmount > consumedAssetAmount {
-				fc.errs.Add(errInsufficientFunds)
+				fc.errs.Add(fmt.Errorf("tried to produce %d but only consumed %d of asset %s",
+					producedAssetAmount,
+					consumedAssetAmount,
+					ids.NewID(assetID),
+				))
 				break
 			}
 		}
