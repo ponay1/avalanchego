@@ -15,6 +15,11 @@ func (mm MockManager) Router() router.Router { return nil }
 // CreateChain ...
 func (mm MockManager) CreateChain(ChainParameters) {}
 
+// GetChain ...
+func (mm MockManager) GetChain(ids.ID) (*router.Handler, error) {
+	return nil, nil
+}
+
 // ForceCreateChain ...
 func (mm MockManager) ForceCreateChain(ChainParameters) {}
 

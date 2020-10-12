@@ -23,6 +23,7 @@ import (
 	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/api/keystore"
 	"github.com/ava-labs/avalanchego/api/metrics"
+	"github.com/ava-labs/avalanchego/api/xput"
 	"github.com/ava-labs/avalanchego/chains"
 	"github.com/ava-labs/avalanchego/chains/atomic"
 	"github.com/ava-labs/avalanchego/database"
@@ -32,6 +33,7 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/ipcs"
 	"github.com/ava-labs/avalanchego/network"
+	"github.com/ava-labs/avalanchego/snow/engine/avalanche"
 	"github.com/ava-labs/avalanchego/snow/networking/benchlist"
 	"github.com/ava-labs/avalanchego/snow/networking/router"
 	"github.com/ava-labs/avalanchego/snow/networking/timeout"
@@ -620,8 +622,27 @@ func (n *Node) initXputAPI() error {
 		return nil
 	}
 	n.Log.Info("initializing xput API")
-	//service, err := xput.NewService()
-	return errors.New("TODO")
+
+	// Get the X-Chain's engine
+	xChainID, err := n.chainManager.Lookup("X")
+	if err != nil {
+		return errors.New("X-Chain not created")
+	}
+
+	handler, err := n.chainManager.GetChain(xChainID)
+	if err != nil {
+		return fmt.Errorf("couldn't get X-Chain: %w", err)
+	}
+	engine, ok := handler.Engine().(*avalanche.Transitive)
+	if !ok {
+		return fmt.Errorf("expected engine to be *avalanche.Transitive but is %T", handler.Engine())
+	}
+
+	service, err := xput.NewService(n.Config.NetworkID, n.Config.TxFee, n.Log, engine)
+	if err != nil {
+		return err
+	}
+	return n.APIServer.AddRoute(service, &sync.RWMutex{}, "xput", "", n.HTTPLog)
 }
 
 // initAdminAPI initializes the Admin API service
@@ -784,9 +805,6 @@ func (n *Node) Initialize(config *Config, logger logging.Logger, logFactory logg
 	if err := n.initMetricsAPI(); err != nil { // Start the Metrics API
 		return fmt.Errorf("couldn't initialize metrics API: %w", err)
 	}
-	if err := n.initXputAPI(); err != nil {
-		return fmt.Errorf("couldn't initialize xput API: %w", err)
-	}
 
 	n.initSharedMemory() // Initialize shared memory
 
@@ -820,15 +838,20 @@ func (n *Node) Initialize(config *Config, logger logging.Logger, logFactory logg
 	if err := n.initIPCAPI(); err != nil { // Start the IPC API
 		return fmt.Errorf("couldn't initialize the IPC API: %w", err)
 	}
-	if err := n.initXputAPI(); err != nil { // Start the throughput test server
-		return fmt.Errorf("couldn't initialize the xput API: %w", err)
-	}
 	if err := n.initAliases(genesisBytes); err != nil { // Set up aliases
 		return fmt.Errorf("couldn't initialize aliases: %w", err)
 	}
 	if err := n.initChains(genesisBytes, avaxAssetID); err != nil { // Start the Platform chain
 		return fmt.Errorf("couldn't initialize chains: %w", err)
 	}
+
+	go func() {
+		time.Sleep(10 * time.Second)
+		if err := n.initXputAPI(); err != nil { // Start the throughput test server
+			n.Log.Warn("couldn't initialize the xput API: %s", err)
+		}
+	}()
+
 	return nil
 }
 
