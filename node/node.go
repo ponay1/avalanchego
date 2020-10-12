@@ -120,6 +120,14 @@ type Node struct {
 
 	// channel for closing the node
 	nodeCloser chan<- os.Signal
+
+	// isBootstrapped is true if the X, P and C chains are bootstrapped
+	// Should only be used while isBootstrappedCV.L is locked
+	// TODO: Instead of tracking this way, register a callback to execute
+	// when the chain bootstraps
+	isBootstrapped bool
+	// Signalled when the X, P and C chain are all bootstrapped
+	isBootstrappedCV sync.Cond
 }
 
 /*
@@ -616,19 +624,30 @@ func (n *Node) initMetricsAPI() error {
 }
 
 // initXputAPI initializes the xput test API
+// This method blocks until the X-Chain is bootstrapped and it should
+// be started in a goroutine.
+// Assumes n.isBootstrappedCV is initialized.
 func (n *Node) initXputAPI() error {
 	if !n.Config.XputAPIEnabled {
 		n.Log.Info("skipping xput API initialization because it has been disabled")
 		return nil
 	}
-	n.Log.Info("initializing xput API")
+	n.Log.Info("initializing xput API. Waiting for X-Chain to bootstrap")
+
+	n.isBootstrappedCV.L.Lock()
+	for !n.isBootstrapped {
+		n.isBootstrappedCV.Wait()
+	}
+	n.isBootstrappedCV.L.Unlock()
+
+	// The X-Chain is bootstrapped
+	n.Log.Info("X-Chain bootstrapped. Continuing Xput API initilization")
 
 	// Get the X-Chain's engine
 	xChainID, err := n.chainManager.Lookup("X")
 	if err != nil {
 		return errors.New("X-Chain not created")
 	}
-
 	handler, err := n.chainManager.GetChain(xChainID)
 	if err != nil {
 		return fmt.Errorf("couldn't get X-Chain: %w", err)
@@ -637,7 +656,6 @@ func (n *Node) initXputAPI() error {
 	if !ok {
 		return fmt.Errorf("expected engine to be *avalanche.Transitive but is %T", handler.Engine())
 	}
-
 	service, err := xput.NewService(n.Config.NetworkID, n.Config.TxFee, n.Log, engine)
 	if err != nil {
 		return err
@@ -710,6 +728,10 @@ func (n *Node) initHealthAPI() error {
 		} else if !n.chainManager.IsBootstrapped(cChainID) {
 			return nil, errors.New("C-Chain not bootstrapped")
 		}
+		n.isBootstrappedCV.L.Lock()
+		n.isBootstrapped = true // Mark that the X, P, C chains are bootstrapped
+		n.isBootstrappedCV.Broadcast()
+		n.isBootstrappedCV.L.Unlock()
 		return nil, nil
 	}
 	// Passes if the P, X and C chains are finished bootstrapping
@@ -775,6 +797,7 @@ func (n *Node) Initialize(config *Config, logger logging.Logger, logFactory logg
 	n.Log = logger
 	n.LogFactory = logFactory
 	n.Config = config
+	n.isBootstrappedCV = sync.Cond{L: &sync.Mutex{}}
 	n.Log.Info("Node version is: %s", Version)
 
 	httpLog, err := logFactory.MakeSubdir("http")
@@ -841,12 +864,12 @@ func (n *Node) Initialize(config *Config, logger logging.Logger, logFactory logg
 	if err := n.initAliases(genesisBytes); err != nil { // Set up aliases
 		return fmt.Errorf("couldn't initialize aliases: %w", err)
 	}
+
 	if err := n.initChains(genesisBytes, avaxAssetID); err != nil { // Start the Platform chain
 		return fmt.Errorf("couldn't initialize chains: %w", err)
 	}
 
 	go func() {
-		time.Sleep(10 * time.Second)
 		if err := n.initXputAPI(); err != nil { // Start the throughput test server
 			n.Log.Warn("couldn't initialize the xput API: %s", err)
 		}

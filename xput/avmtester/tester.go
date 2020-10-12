@@ -119,6 +119,13 @@ func (t *Tester) Run(config TestConfig) (interface{}, error) {
 
 	for i := 0; i < config.NumTxs; i++ {
 		tx := t.nextTx()
+		if tx == nil {
+			t.Log.Info("ran out of transactions after issuing %d", i)
+			break
+		}
+		if i == config.NumTxs-1 || (i%config.LogFreq == 0 && i != 0) {
+			t.Log.Info("sending tx %d of %d. ID: %s", i+1, config.NumTxs, tx.ID())
+		}
 		t.Engine.Context().Lock.Lock()
 		snowstormTx, err := t.Engine.VM.ParseTx(tx.Bytes())
 		if err != nil {
@@ -130,12 +137,10 @@ func (t *Tester) Run(config TestConfig) (interface{}, error) {
 			t.Engine.Context().Lock.Unlock()
 			return nil, fmt.Errorf("failed to issue tx: %s", err)
 		}
-		if i%config.LogFreq == 0 && i != 0 {
-			t.Log.Info("sent tx %d of %d. ID: %s", i, config.NumTxs, tx.ID())
-		}
 
 		t.Engine.Context().Lock.Unlock()
 	}
+
 	return nil, nil
 }
 
