@@ -156,6 +156,7 @@ func init() {
 	fs.Uint64Var(&Config.DisabledStakingWeight, "staking-disabled-weight", 1, "Weight to provide to each peer when staking is disabled")
 
 	// Throttling:
+	fs.UintVar(&Config.MaxPendingMsgs, "max-pending-msgs", 1024, "Maximum number of pending messages. Messages after this will be dropped.")
 	fs.UintVar(&Config.MaxNonStakerPendingMsgs, "max-non-staker-pending-msgs", uint(router.DefaultMaxNonStakerPendingMsgs), "Maximum number of messages a non-staker is allowed to have pending.")
 	fs.Float64Var(&Config.StakerMSGPortion, "staker-msg-reserved", router.DefaultStakerPortion, "Reserve a portion of the chain message queue's space for stakers.")
 	fs.Float64Var(&Config.StakerCPUPortion, "staker-cpu-reserved", router.DefaultStakerPortion, "Reserve a portion of the chain's CPU time for stakers.")
