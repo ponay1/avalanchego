@@ -35,7 +35,6 @@ const (
 	defaultInitialReconnectDelay                     = time.Second
 	defaultMaxReconnectDelay                         = time.Hour
 	DefaultMaxMessageSize                     uint32 = 1 << 21
-	defaultSendQueueSize                             = 8192
 	defaultMaxNetworkPendingSendBytes                = 1 << 29 // 512MB
 	defaultNetworkPendingSendBytesToRateLimit        = defaultMaxNetworkPendingSendBytes / 4
 	defaultMaxClockDifference                        = time.Minute
@@ -171,6 +170,7 @@ func NewDefaultNetwork(
 	router router.Router,
 	connMeterResetDuration time.Duration,
 	connMeterMaxConns int,
+	sendQueueSize int,
 ) Network {
 	return NewNetwork(
 		registerer,
@@ -190,7 +190,7 @@ func NewDefaultNetwork(
 		defaultInitialReconnectDelay,
 		defaultMaxReconnectDelay,
 		DefaultMaxMessageSize,
-		defaultSendQueueSize,
+		sendQueueSize,
 		defaultMaxNetworkPendingSendBytes,
 		defaultNetworkPendingSendBytesToRateLimit,
 		defaultMaxClockDifference,

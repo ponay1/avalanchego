@@ -229,6 +229,7 @@ func (n *Node) initNetworking() error {
 		consensusRouter,
 		n.Config.ConnMeterResetDuration,
 		n.Config.ConnMeterMaxConns,
+		int(n.Config.SendQueueSize),
 	)
 
 	n.nodeCloser = utils.HandleSignals(func(os.Signal) {

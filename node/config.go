@@ -54,6 +54,7 @@ type Config struct {
 
 	// Network configuration
 	NetworkConfig timer.AdaptiveTimeoutConfig
+	SendQueueSize uint
 
 	// Benchlist Configuration
 	BenchlistConfig benchlist.Config

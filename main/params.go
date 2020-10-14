@@ -167,6 +167,7 @@ func init() {
 	networkMaximumTimeout := fs.Int64("network-maximum-timeout", int64(10*time.Second), "Maximum timeout value of the adaptive timeout manager, in nanoseconds.")
 	networkTimeoutInc := fs.Int64("network-timeout-increase", 60*int64(time.Millisecond), "Increase of network timeout after a failed request, in nanoseconds.")
 	networkTimeoutDec := fs.Int64("network-timeout-reduction", 12*int64(time.Millisecond), "Decrease of network timeout after a successful request, in nanoseconds.")
+	fs.UintVar(&Config.SendQueueSize, "send-queue-size", 2048, "Max number of messages waiting to be sent to peers.")
 
 	// Benchlist Parameters:
 	fs.IntVar(&Config.BenchlistConfig.Threshold, "benchlist-fail-threshold", 10, "Number of consecutive failed queries before benchlisting a node.")
