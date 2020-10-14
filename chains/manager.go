@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/ava-labs/avalanchego/api"
+	"github.com/ava-labs/avalanchego/api/health"
 	"github.com/ava-labs/avalanchego/api/keystore"
 	"github.com/ava-labs/avalanchego/chains/atomic"
 	"github.com/ava-labs/avalanchego/database"
@@ -134,6 +135,7 @@ type ManagerConfig struct {
 	XChainID                ids.ID
 	CriticalChains          ids.Set          // Chains that can't exit gracefully
 	TimeoutManager          *timeout.Manager // Manages request timeouts when sending messages to other validators
+	HealthService           *health.Health
 }
 
 type manager struct {
@@ -244,13 +246,12 @@ func (m *manager) buildChain(chainParams ChainParameters) (*chain, error) {
 	}
 
 	ctx := &snow.Context{
-		NetworkID:   m.NetworkID,
-		SubnetID:    chainParams.SubnetID,
-		ChainID:     chainParams.ID,
-		NodeID:      m.NodeID,
-		XChainID:    m.XChainID,
-		AVAXAssetID: m.AVAXAssetID,
-
+		NetworkID:           m.NetworkID,
+		SubnetID:            chainParams.SubnetID,
+		ChainID:             chainParams.ID,
+		NodeID:              m.NodeID,
+		XChainID:            m.XChainID,
+		AVAXAssetID:         m.AVAXAssetID,
 		Log:                 chainLog,
 		DecisionDispatcher:  m.DecisionEvents,
 		ConsensusDispatcher: m.ConsensusEvents,
@@ -462,6 +463,20 @@ func (m *manager) createAvalancheChain(
 		return nil, fmt.Errorf("error initializing avalanche engine: %w", err)
 	}
 
+	// Register health checks
+	chainAlias, err := m.PrimaryAlias(ctx.ChainID)
+	if err != nil {
+		chainAlias = ctx.ChainID.String()
+	}
+	wrapperHc := &healthCheckWrapper{
+		chain: chainAlias,
+		lock:  &ctx.Lock,
+		check: engine.Health,
+	}
+	if err := m.HealthService.RegisterCheck(wrapperHc); err != nil {
+		return nil, fmt.Errorf("couldn't add health check for chain %s: %w", chainAlias, err)
+	}
+
 	// Asynchronously passes messages from the network to the consensus engine
 	handler := &router.Handler{}
 	handler.Initialize(
@@ -562,6 +577,21 @@ func (m *manager) createSnowmanChain(
 		consensusParams.Metrics,
 	)
 
+	// Register health checks
+	chainAlias, err := m.PrimaryAlias(ctx.ChainID)
+	if err != nil {
+		chainAlias = ctx.ChainID.String()
+	}
+
+	wrapperHc := &healthCheckWrapper{
+		chain: chainAlias,
+		lock:  &ctx.Lock,
+		check: engine.Health,
+	}
+	if err := m.HealthService.RegisterCheck(wrapperHc); err != nil {
+		return nil, fmt.Errorf("couldn't add health check for chain %s: %w", chainAlias, err)
+	}
+
 	return &chain{
 		Engine:  engine,
 		Handler: handler,
@@ -618,4 +648,28 @@ func (m *manager) isChainWithAlias(aliases ...string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// Wraps a health check.
+// Grabs [Lock] before executing the health check
+type healthCheckWrapper struct {
+	check func() (interface{}, error)
+
+	// Grabs/releases this before/after health check func
+	lock *sync.RWMutex
+
+	// Alias/ID of chain this health check is for
+	chain string
+}
+
+// Name is this health check's formatted name
+func (hc *healthCheckWrapper) Name() string {
+	return hc.chain
+}
+
+// Execute executes the health check function with the lock
+func (hc *healthCheckWrapper) Execute() (interface{}, error) {
+	hc.lock.Lock()
+	defer hc.lock.Unlock()
+	return hc.check()
 }
