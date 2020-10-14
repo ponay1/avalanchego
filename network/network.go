@@ -35,7 +35,7 @@ const (
 	defaultInitialReconnectDelay                     = time.Second
 	defaultMaxReconnectDelay                         = time.Hour
 	DefaultMaxMessageSize                     uint32 = 1 << 21
-	defaultSendQueueSize                             = 1 << 10
+	defaultSendQueueSize                             = 8192
 	defaultMaxNetworkPendingSendBytes                = 1 << 29 // 512MB
 	defaultNetworkPendingSendBytesToRateLimit        = defaultMaxNetworkPendingSendBytes / 4
 	defaultMaxClockDifference                        = time.Minute
