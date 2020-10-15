@@ -23,6 +23,11 @@ import (
 	"github.com/gorilla/rpc/v2"
 )
 
+const (
+	defaultBatchSize         = 10
+	defaultMaxProcessingVtxs = 50
+)
+
 var errNoKey = errors.New("argument 'key' not given")
 
 type service struct {
@@ -77,21 +82,30 @@ type RunArgs struct {
 	// Controls the UTXO.
 	// CB58 repr. of a private key on the X-Chain
 	Key string `json:"key"`
+
+	BatchSize json.Uint64 `json:"batchSize"`
+
+	MaxProcessingVtxs json.Uint64 `json:"maxProcessingVtxs"`
 }
 
 // Run a throughput test. Only supports X-Chain right now.
 func (s *service) Run(_ *http.Request, args *RunArgs, reply *api.SuccessResponse) error {
 	s.log.Info("xput.run called")
 
+	if args.MaxProcessingVtxs == 0 {
+		args.MaxProcessingVtxs = defaultMaxProcessingVtxs
+	}
+
 	// Create the tester
 	t, err := avmtester.NewTester(avmtester.Config{
-		Engine:      s.engine,
-		NetworkID:   s.networkID,
-		ChainID:     s.engine.Context().ChainID,
-		Clock:       s.clock,
-		Log:         s.log,
-		TxFee:       s.txFee,
-		AvaxAssetID: s.avaxAssetID,
+		Engine:            s.engine,
+		NetworkID:         s.networkID,
+		ChainID:           s.engine.Context().ChainID,
+		Clock:             s.clock,
+		Log:               s.log,
+		TxFee:             s.txFee,
+		AvaxAssetID:       s.avaxAssetID,
+		MaxProcessingVtxs: int(args.MaxProcessingVtxs),
 	})
 	if err != nil {
 		return fmt.Errorf("couldn't create new tester: %w", err)
@@ -134,6 +148,10 @@ func (s *service) Run(_ *http.Request, args *RunArgs, reply *api.SuccessResponse
 		logFreq = 1
 	}
 
+	if args.BatchSize == 0 {
+		args.BatchSize = defaultBatchSize
+	}
+
 	// Run the test
 	_, err = t.Run(avmtester.TestConfig{
 		NumTxs: int(args.NumTxs),
@@ -144,7 +162,7 @@ func (s *service) Run(_ *http.Request, args *RunArgs, reply *api.SuccessResponse
 		LogFreq:    logFreq,
 		UTXOAmount: uint64(args.Amount),
 		Key:        key,
-		BatchSize:  10,
+		BatchSize:  int(args.BatchSize),
 	})
 	if err != nil {
 		return fmt.Errorf("couldn't run xput test: %w", err)

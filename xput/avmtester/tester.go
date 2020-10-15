@@ -56,24 +56,24 @@ type TestConfig struct {
 // Config for an avmtester.Tester
 type Config struct {
 	// The consensus engine
-	Engine      *avalanche.Transitive
-	NetworkID   uint32
-	ChainID     ids.ID
-	Clock       timer.Clock
-	codec       codec.Codec
-	Log         logging.Logger
-	TxFee       uint64
-	AvaxAssetID ids.ID
+	Engine            *avalanche.Transitive
+	NetworkID         uint32
+	ChainID           ids.ID
+	Clock             timer.Clock
+	codec             codec.Codec
+	Log               logging.Logger
+	TxFee             uint64
+	AvaxAssetID       ids.ID
+	MaxProcessingVtxs int
 }
 
 // tester is a holder for keys and UTXOs for the Avalanche DAG.
 // tester implementes Tester
 type tester struct {
-	lock *sync.Mutex
 	Config
-	maxProcessingVtxs int
-	keychain          *secp256k1fx.Keychain // Mapping from public address to the SigningKeys
-	utxoSet           *UTXOSet              // Mapping from utxoIDs to UTXOs
+	lock     *sync.Mutex
+	keychain *secp256k1fx.Keychain // Mapping from public address to the SigningKeys
+	utxoSet  *UTXOSet              // Mapping from utxoIDs to UTXOs
 	// Asset ID --> Balance of this asset held by this wallet
 	balance map[[32]byte]uint64
 	// Txs that will be issued as part of this test
@@ -105,11 +105,10 @@ func NewTester(config Config) (xput.Tester, error) {
 	)
 	config.codec = c
 	t := &tester{
-		Config:            config,
-		keychain:          secp256k1fx.NewKeychain(),
-		utxoSet:           &UTXOSet{},
-		balance:           make(map[[32]byte]uint64),
-		maxProcessingVtxs: defaultMaxOutstandingVtxs,
+		Config:   config,
+		keychain: secp256k1fx.NewKeychain(),
+		utxoSet:  &UTXOSet{},
+		balance:  make(map[[32]byte]uint64),
 	}
 	t.processingVtxsCond = sync.NewCond(&t.Config.Engine.Ctx.Lock)
 	return t, errs.Err
@@ -147,7 +146,7 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 	// Issue the txs
 	for i := 0; i < config.NumTxs; i++ {
 		t.processingVtxsCond.L.Lock()
-		for t.processingVtxs > t.maxProcessingVtxs {
+		for t.processingVtxs > t.MaxProcessingVtxs {
 			// Wait until we process some vertices before issuing more
 			t.processingVtxsCond.Wait()
 		}
@@ -155,7 +154,7 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 		txs, err := t.nextTxs(config.BatchSize)
 		if err != nil {
 			t.Log.Info("ran out of transactions after issuing %d", i)
-			break
+			return nil, nil
 		}
 
 		snowstormTxs := make([]snowstorm.Tx, len(txs))
@@ -192,7 +191,7 @@ func (t *tester) Issue(ctx *snow.Context, containerID ids.ID, container []byte) 
 // Assumes t.processingVtxsCond.L is held
 func (t *tester) Accept(ctx *snow.Context, containerID ids.ID, container []byte) error {
 	t.processingVtxs--
-	if t.processingVtxs <= t.maxProcessingVtxs {
+	if t.processingVtxs < t.MaxProcessingVtxs {
 		t.processingVtxsCond.Signal()
 	}
 	return nil
@@ -202,7 +201,7 @@ func (t *tester) Accept(ctx *snow.Context, containerID ids.ID, container []byte)
 // Assumes t.processingVtxsCond.L is held
 func (t *tester) Reject(ctx *snow.Context, containerID ids.ID, container []byte) error {
 	t.processingVtxs--
-	if t.processingVtxs <= t.maxProcessingVtxs {
+	if t.processingVtxs < t.MaxProcessingVtxs {
 		t.processingVtxsCond.Signal()
 	}
 	return nil
