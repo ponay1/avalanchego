@@ -330,12 +330,12 @@ func (t *Transitive) QueryFailed(vdr ids.ShortID, requestID uint32) error {
 }
 
 // Issue a transaction
-func (t *Transitive) Issue(tx snowstorm.Tx) error {
+func (t *Transitive) Issue(txs []snowstorm.Tx) error {
 	if !t.Ctx.IsBootstrapped() {
 		t.Ctx.Log.Debug("dropping Issue due to bootstrapping")
 		return nil
 	}
-	return t.batch([]snowstorm.Tx{tx}, false /*=force*/, false /*=empty*/)
+	return t.batch(txs, true /*=force*/, false /*=empty*/)
 }
 
 // Notify implements the Engine interface

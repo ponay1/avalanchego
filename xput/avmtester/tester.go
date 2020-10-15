@@ -12,6 +12,7 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/snow"
+	"github.com/ava-labs/avalanchego/snow/consensus/snowstorm"
 	"github.com/ava-labs/avalanchego/snow/engine/avalanche"
 	"github.com/ava-labs/avalanchego/utils/codec"
 	"github.com/ava-labs/avalanchego/utils/crypto"
@@ -47,6 +48,9 @@ type TestConfig struct {
 
 	// Frequency of update logs
 	LogFreq int
+
+	// Txs per vertex
+	BatchSize int
 }
 
 // Config for an avmtester.Tester
@@ -148,25 +152,29 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 			t.processingVtxsCond.Wait()
 		}
 
-		tx := t.nextTx()
-		if tx == nil {
+		txs, err := t.nextTxs(config.BatchSize)
+		if err != nil {
 			t.Log.Info("ran out of transactions after issuing %d", i)
 			break
 		}
 
-		snowstormTx, err := t.Engine.VM.ParseTx(tx.Bytes())
-		if err != nil {
-			t.processingVtxsCond.L.Unlock()
-			return nil, fmt.Errorf("failed to parse tx: %s", err)
+		snowstormTxs := make([]snowstorm.Tx, len(txs))
+		for i, tx := range txs {
+			snowstormTxs[i], err = t.Engine.VM.ParseTx(tx.Bytes())
+			if err != nil {
+				t.processingVtxsCond.L.Unlock()
+				return nil, fmt.Errorf("failed to parse tx: %s", err)
+			}
 		}
-		if err := t.Engine.Issue(snowstormTx); err != nil {
+
+		if err := t.Engine.Issue(snowstormTxs); err != nil {
 			t.processingVtxsCond.L.Unlock()
 			return nil, fmt.Errorf("failed to issue tx: %s", err)
 		}
 		t.processingVtxsCond.L.Unlock()
 
 		if i == config.NumTxs-1 || (i%config.LogFreq == 0 && i != 0) {
-			t.Log.Info("sent %d of %d txs. Latest tx ID: %s", i+1, config.NumTxs, tx.ID())
+			t.Log.Info("sent %d of %d txs", (i+1)*config.BatchSize, config.NumTxs)
 		}
 	}
 
@@ -383,15 +391,19 @@ func (t *tester) generateTxs(numTxs int, assetID ids.ID) error {
 	return nil
 }
 
-// nextTx returns the next tx to be sent as part of xput test
-// Returns nil if there are no more transactions
-func (t *tester) nextTx() *avm.Tx {
+// nextTxs returns the next [n] txs to be sent as part of xput test
+// If there are less than [n] txs, returns all remaining txs
+// Returns error if there are no more transactions
+func (t *tester) nextTxs(n int) ([]*avm.Tx, error) {
 	if len(t.txs) == 0 {
-		return nil
+		return nil, errors.New("no remaining transactions")
 	}
-	tx := t.txs[0]
-	t.txs = t.txs[1:]
-	return tx
+	if len(t.txs) < n { // There aren't [n] txs
+		return t.txs, nil // Return all remaining txs
+	}
+	txs := t.txs[:n]
+	t.txs = t.txs[n:]
+	return txs, nil
 }
 
 func (t *tester) String() string {
