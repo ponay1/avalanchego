@@ -144,7 +144,7 @@ func (s *service) Run(_ *http.Request, args *RunArgs, reply *api.SuccessResponse
 		LogFreq:    logFreq,
 		UTXOAmount: uint64(args.Amount),
 		Key:        key,
-		BatchSize:  30,
+		BatchSize:  10,
 	})
 	if err != nil {
 		return fmt.Errorf("couldn't run xput test: %w", err)
