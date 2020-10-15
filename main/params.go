@@ -123,7 +123,7 @@ func init() {
 	consensusIP := fs.String("public-ip", "", "Public IP of this node")
 
 	// Incoming connection throttling
-	// After we receive [conn-meter-max-attempts] incoming connections from a given IP
+	// After we receive [conn-meter-max-conns] incoming connections from a given IP
 	// in the last [conn-meter-reset-duration], we close all subsequent incoming connections
 	// from the IP before upgrade.
 	fs.DurationVar(&Config.ConnMeterResetDuration, "conn-meter-reset-duration", 0*time.Second,

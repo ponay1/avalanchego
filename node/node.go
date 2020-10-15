@@ -649,7 +649,7 @@ func (n *Node) initXputAPI() error {
 	n.isBootstrappedCV.L.Unlock()
 
 	// The X-Chain is bootstrapped
-	n.Log.Info("X-Chain bootstrapped. Continuing Xput API initilization")
+	n.Log.Info("X-Chain bootstrapped. Continuing Xput API initialization")
 
 	// Get the X-Chain's engine
 	xChainID, err := n.chainManager.Lookup("X")
@@ -664,7 +664,7 @@ func (n *Node) initXputAPI() error {
 	if !ok {
 		return fmt.Errorf("expected engine to be *avalanche.Transitive but is %T", handler.Engine())
 	}
-	service, err := xput.NewService(n.Config.NetworkID, n.Config.TxFee, n.Log, engine)
+	service, err := xput.NewService(n.Config.NetworkID, n.Config.TxFee, n.Log, engine, n.ConsensusDispatcher)
 	if err != nil {
 		return err
 	}

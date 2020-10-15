@@ -10,6 +10,7 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/snow/engine/avalanche"
 	"github.com/ava-labs/avalanchego/snow/engine/common"
+	"github.com/ava-labs/avalanchego/snow/triggers"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto"
 	"github.com/ava-labs/avalanchego/utils/formatting"
@@ -32,10 +33,17 @@ type service struct {
 	clock       timer.Clock
 	avaxAssetID ids.ID
 	factory     *crypto.FactorySECP256K1R
+	dispatcher  *triggers.EventDispatcher
 }
 
 // NewService returns a new auth API service
-func NewService(networkID uint32, txFee uint64, log logging.Logger, engine *avalanche.Transitive) (*common.HTTPHandler, error) {
+func NewService(
+	networkID uint32,
+	txFee uint64,
+	log logging.Logger,
+	engine *avalanche.Transitive,
+	dispatcher *triggers.EventDispatcher,
+) (*common.HTTPHandler, error) {
 	newServer := rpc.NewServer()
 	codec := cjson.NewCodec()
 	newServer.RegisterCodec(codec, "application/json")
@@ -49,6 +57,7 @@ func NewService(networkID uint32, txFee uint64, log logging.Logger, engine *aval
 			clock:       timer.Clock{},
 			avaxAssetID: engine.Context().AVAXAssetID,
 			factory:     &crypto.FactorySECP256K1R{},
+			dispatcher:  dispatcher,
 		},
 		"xput",
 	)
@@ -59,9 +68,6 @@ func NewService(networkID uint32, txFee uint64, log logging.Logger, engine *aval
 type RunArgs struct {
 	// Number of txs to issue in the test
 	NumTxs json.Uint64 `json:"numTxs"`
-
-	// Max number of pending transactions at a time
-	MaxPendingTxs json.Uint64 `json:"maxPendingTxs"`
 
 	// UTXO to spend to pay for txs
 	TxID        ids.ID      `json:"txID"`
@@ -90,6 +96,14 @@ func (s *service) Run(_ *http.Request, args *RunArgs, reply *api.SuccessResponse
 	if err != nil {
 		return fmt.Errorf("couldn't create new tester: %w", err)
 	}
+	if err := s.dispatcher.Register("xput", t); err != nil {
+		return fmt.Errorf("couldn't register xput test with the event dispatcher: %w", err)
+	}
+	defer func() {
+		if err := s.dispatcher.Deregister("xput"); err != nil {
+			s.log.Warn("couldn't deregister xput service from event dispatcher: %s", err)
+		}
+	}()
 
 	// Parse key (e.g. "PrivateKey-29WjzjTN6ZEvm2mFqzJQkBU15LPsKXKhSYC2TbZrqoFR5ZkBLT")
 	if args.Key == "" {
@@ -122,8 +136,7 @@ func (s *service) Run(_ *http.Request, args *RunArgs, reply *api.SuccessResponse
 
 	// Run the test
 	_, err = t.Run(avmtester.TestConfig{
-		NumTxs:        int(args.NumTxs),
-		MaxPendingTxs: int(args.MaxPendingTxs), // TODO use this value
+		NumTxs: int(args.NumTxs),
 		UTXOID: avax.UTXOID{
 			TxID:        args.TxID,
 			OutputIndex: uint32(args.OutputIndex),
@@ -139,43 +152,3 @@ func (s *service) Run(_ *http.Request, args *RunArgs, reply *api.SuccessResponse
 	reply.Success = true
 	return nil
 }
-
-/*
-// Start the throughput test
-// TODO organize this logic
-func (n *Node) doXputTest(avaxAssetID ids.ID) {
-	time.Sleep(7 * time.Second)
-	// Listen for consensus events on the X-Chain
-	xChainID, err := n.chainManager.Lookup("X")
-	if err != nil {
-		n.Log.Error("failed to get X-Chain ID: %s", err)
-		return
-	}
-	es, err := n.IPCs.Publish(xChainID)
-	if err != nil {
-		n.Log.Error("failed to publish X-Chain: %s", err)
-		return
-	}
-	unixAddr, err := net.ResolveUnixAddr("unix", es.DecisionsURL())
-	if err != nil {
-		n.Log.Error("failed to get unix addr: %s", err)
-		return
-	}
-	_, err = net.DialUnix("unix", nil, unixAddr)
-	if err != nil {
-		n.Log.Error("failed to dial: %s", err)
-		return
-	}
-	// go func() {
-	// 	for {
-	// 		b := make([]byte, 1000)
-	// 		bytesRead, err := unixConn.Read(b)
-	// 		if err != nil {
-	// 			n.Log.Error("failed to read: %s", err)
-	// 			return
-	// 		}
-	// 		n.Log.Info("read %v", b[:bytesRead])
-	// 	}
-	// }()
-}
-*/

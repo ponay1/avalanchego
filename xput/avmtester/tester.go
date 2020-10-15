@@ -6,10 +6,12 @@ package avmtester
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	stdmath "math"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/snow"
 	"github.com/ava-labs/avalanchego/snow/engine/avalanche"
 	"github.com/ava-labs/avalanchego/utils/codec"
 	"github.com/ava-labs/avalanchego/utils/crypto"
@@ -20,6 +22,11 @@ import (
 	"github.com/ava-labs/avalanchego/vms/avm"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
+	"github.com/ava-labs/avalanchego/xput"
+)
+
+const (
+	defaultMaxOutstandingVtxs = 50
 )
 
 var (
@@ -31,15 +38,11 @@ type TestConfig struct {
 	// NumTxs to send during the test
 	NumTxs int
 
-	// Max pengind txs at a time
-	MaxPendingTxs int
-
-	// Describe the UTXOs spent to pay for this test
+	// The UTXO spent to pay for this test
 	avax.UTXOID
-
 	UTXOAmount uint64 `json:"amount"`
 
-	// Controls the UTXOs
+	// Controls the UTXO
 	Key *crypto.PrivateKeySECP256K1R
 
 	// Frequency of update logs
@@ -59,18 +62,29 @@ type Config struct {
 	AvaxAssetID ids.ID
 }
 
-// Tester is a holder for keys and UTXOs for the Avalanche DAG.
-type Tester struct {
+// tester is a holder for keys and UTXOs for the Avalanche DAG.
+// tester implementes Tester
+type tester struct {
+	lock *sync.Mutex
 	Config
-	keychain *secp256k1fx.Keychain // Mapping from public address to the SigningKeys
-	utxoSet  *UTXOSet              // Mapping from utxoIDs to UTXOs
+	maxProcessingVtxs int
+	keychain          *secp256k1fx.Keychain // Mapping from public address to the SigningKeys
+	utxoSet           *UTXOSet              // Mapping from utxoIDs to UTXOs
 	// Asset ID --> Balance of this asset held by this wallet
 	balance map[[32]byte]uint64
-	txs     []*avm.Tx
+	// Txs that will be issued as part of this test
+	txs []*avm.Tx
+
+	// Signalled when there are fewer than the maximum number of processing vertices
+	// Its lock is the engine's lock
+	processingVtxsCond *sync.Cond
+
+	// Should only be accessed when processingVtxsCond.L is held
+	processingVtxs int
 }
 
 // NewTester returns a new Tester
-func NewTester(config Config) (*Tester, error) {
+func NewTester(config Config) (xput.Tester, error) {
 	c := codec.NewDefault()
 	errs := wrappers.Errs{}
 	errs.Add(
@@ -86,17 +100,24 @@ func NewTester(config Config) (*Tester, error) {
 		c.RegisterType(&secp256k1fx.Credential{}),
 	)
 	config.codec = c
-	return &Tester{
-		Config:   config,
-		keychain: secp256k1fx.NewKeychain(),
-		utxoSet:  &UTXOSet{},
-		balance:  make(map[[32]byte]uint64),
-	}, errs.Err
+	t := &tester{
+		Config:            config,
+		keychain:          secp256k1fx.NewKeychain(),
+		utxoSet:           &UTXOSet{},
+		balance:           make(map[[32]byte]uint64),
+		maxProcessingVtxs: defaultMaxOutstandingVtxs,
+	}
+	t.processingVtxsCond = sync.NewCond(&t.Config.Engine.Ctx.Lock)
+	return t, errs.Err
 }
 
-// Run the test. Assumes Init did all necessary setup.
-// Returns when the test starts.
-func (t *Tester) Run(config TestConfig) (interface{}, error) {
+// Run the test. Assumes Init has been called.
+// Returns after all the txs have been issued.
+func (t *tester) Run(configIntf interface{}) (interface{}, error) {
+	config, ok := configIntf.(TestConfig)
+	if !ok {
+		return nil, fmt.Errorf("expected TestConfig but got %T", configIntf)
+	}
 	t.importKey(config.Key)
 	t.addUTXO(&avax.UTXO{
 		UTXOID: avax.UTXOID{
@@ -113,40 +134,75 @@ func (t *Tester) Run(config TestConfig) (interface{}, error) {
 			},
 		},
 	})
+
+	// Generate all the txs
 	if err := t.generateTxs(config.NumTxs, t.AvaxAssetID); err != nil {
 		return nil, fmt.Errorf("failed to generate txs: %s", err)
 	}
 
+	// Issue the txs
 	for i := 0; i < config.NumTxs; i++ {
+		t.processingVtxsCond.L.Lock()
+		for t.processingVtxs > t.maxProcessingVtxs {
+			// Wait until we process some vertices before issuing more
+			t.processingVtxsCond.Wait()
+		}
+
 		tx := t.nextTx()
 		if tx == nil {
 			t.Log.Info("ran out of transactions after issuing %d", i)
 			break
 		}
-		if i == config.NumTxs-1 || (i%config.LogFreq == 0 && i != 0) {
-			t.Log.Info("sending tx %d of %d. ID: %s", i+1, config.NumTxs, tx.ID())
-		}
-		t.Engine.Context().Lock.Lock()
+
 		snowstormTx, err := t.Engine.VM.ParseTx(tx.Bytes())
 		if err != nil {
-			t.Engine.Context().Lock.Unlock()
+			t.processingVtxsCond.L.Unlock()
 			return nil, fmt.Errorf("failed to parse tx: %s", err)
 		}
-		err = t.Engine.Issue(snowstormTx)
-		if err != nil {
-			t.Engine.Context().Lock.Unlock()
+		if err := t.Engine.Issue(snowstormTx); err != nil {
+			t.processingVtxsCond.L.Unlock()
 			return nil, fmt.Errorf("failed to issue tx: %s", err)
 		}
+		t.processingVtxsCond.L.Unlock()
 
-		t.Engine.Context().Lock.Unlock()
+		if i == config.NumTxs-1 || (i%config.LogFreq == 0 && i != 0) {
+			t.Log.Info("sent %d of %d txs. Latest tx ID: %s", i+1, config.NumTxs, tx.ID())
+		}
 	}
 
 	return nil, nil
 }
 
+// Issue is called when the given container is issued to consensus
+// Assumes t.processingVtxsCond.L is held
+func (t *tester) Issue(ctx *snow.Context, containerID ids.ID, container []byte) error {
+	t.processingVtxs++
+	return nil
+}
+
+// Accept is called when the given container is accepted by consensus
+// Assumes t.processingVtxsCond.L is held
+func (t *tester) Accept(ctx *snow.Context, containerID ids.ID, container []byte) error {
+	t.processingVtxs--
+	if t.processingVtxs <= t.maxProcessingVtxs {
+		t.processingVtxsCond.Signal()
+	}
+	return nil
+}
+
+// Reject is called when the given container is rejected by consensus
+// Assumes t.processingVtxsCond.L is held
+func (t *tester) Reject(ctx *snow.Context, containerID ids.ID, container []byte) error {
+	t.processingVtxs--
+	if t.processingVtxs <= t.maxProcessingVtxs {
+		t.processingVtxsCond.Signal()
+	}
+	return nil
+}
+
 // getAddress returns one of the addresses this wallet manages.
 // If no address exists, one will be created.
-func (t *Tester) getAddress() (ids.ShortID, error) {
+func (t *tester) getAddress() (ids.ShortID, error) {
 	if t.keychain.Addrs.Len() == 0 {
 		return t.createAddress()
 	}
@@ -156,17 +212,17 @@ func (t *Tester) getAddress() (ids.ShortID, error) {
 // createAddress returns a new address.
 // It also saves the address and the private key that controls it
 // so the address can be used later
-func (t *Tester) createAddress() (ids.ShortID, error) {
+func (t *tester) createAddress() (ids.ShortID, error) {
 	privKey, err := t.keychain.New()
 	return privKey.PublicKey().Address(), err
 }
 
 // importKey imports a private key into this wallet
-func (t *Tester) importKey(sk *crypto.PrivateKeySECP256K1R) { t.keychain.Add(sk) }
+func (t *tester) importKey(sk *crypto.PrivateKeySECP256K1R) { t.keychain.Add(sk) }
 
 // addUTXO adds a new UTXO to this wallet if this wallet may spend it
 // The UTXO's output must be an avax.TransferableOut
-func (t *Tester) addUTXO(utxo *avax.UTXO) {
+func (t *tester) addUTXO(utxo *avax.UTXO) {
 	out, ok := utxo.Out.(avax.TransferableOut)
 	if !ok {
 		return
@@ -179,7 +235,7 @@ func (t *Tester) addUTXO(utxo *avax.UTXO) {
 }
 
 // removeUTXO from this wallet
-func (t *Tester) removeUTXO(utxoID ids.ID) {
+func (t *tester) removeUTXO(utxoID ids.ID) {
 	utxo := t.utxoSet.Get(utxoID)
 	if utxo == nil {
 		return
@@ -199,7 +255,7 @@ func (t *Tester) removeUTXO(utxoID ids.ID) {
 
 // createTx returns a tx that sends [amount] of [assetID] to [destAddr]
 // Any change is sent to an address controlled by this wallet
-func (t *Tester) createTx(assetID ids.ID, amount uint64, destAddr, changeAddr ids.ShortID, time uint64) (*avm.Tx, error) {
+func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr, changeAddr ids.ShortID, time uint64) (*avm.Tx, error) {
 	if amount == 0 {
 		return nil, errAmtZero
 	}
@@ -285,7 +341,7 @@ func (t *Tester) createTx(assetID ids.ID, amount uint64, destAddr, changeAddr id
 
 // generateTxs generates transactions that will be sent during the test.
 // [numTxs] are generated. Each sends 1 unit of [assetID].
-func (t *Tester) generateTxs(numTxs int, assetID ids.ID) error {
+func (t *tester) generateTxs(numTxs int, assetID ids.ID) error {
 	t.Log.Info("Generating %d transactions", numTxs)
 
 	frequency := numTxs / 50
@@ -329,7 +385,7 @@ func (t *Tester) generateTxs(numTxs int, assetID ids.ID) error {
 
 // nextTx returns the next tx to be sent as part of xput test
 // Returns nil if there are no more transactions
-func (t *Tester) nextTx() *avm.Tx {
+func (t *tester) nextTx() *avm.Tx {
 	if len(t.txs) == 0 {
 		return nil
 	}
@@ -338,7 +394,7 @@ func (t *Tester) nextTx() *avm.Tx {
 	return tx
 }
 
-func (t *Tester) String() string {
+func (t *tester) String() string {
 	return fmt.Sprintf(
 		"Keychain:\n"+
 			"%s\n"+
