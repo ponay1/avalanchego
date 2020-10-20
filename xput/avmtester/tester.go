@@ -148,7 +148,7 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 		t.Log.Info("grabbing lock") // todo remove
 		t.processingVtxsCond.L.Lock()
 		t.Log.Info("grabbed lock") // todo remove
-		for t.processingVtxs > t.MaxProcessingVtxs {
+		for t.processingVtxs >= t.MaxProcessingVtxs {
 			t.Log.Info("there are %d processing vtxs. waiting", t.processingVtxs) // todo remove
 			// Wait until we process some vertices before issuing more
 			t.processingVtxsCond.Wait()
