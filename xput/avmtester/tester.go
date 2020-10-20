@@ -169,7 +169,7 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 				return nil, fmt.Errorf("failed to parse tx: %s", err)
 			}
 		}
-		t.Log.Info("issuing txs") // todo remove
+		t.Log.Info("issuing %d txs", len(snowstormTxs)) // todo remove
 
 		if err := t.Engine.Issue(snowstormTxs); err != nil {
 			t.processingVtxsCond.L.Unlock()
@@ -368,13 +368,12 @@ func (t *tester) generateTxs(numTxs int, assetID ids.ID) error {
 	}
 
 	now := t.Clock.Unix()
-	addrs := t.keychain.Addresses().CappedList(1)
-	if len(addrs) == 0 {
+	if len(t.keychain.Addresses().CappedList(1)) == 0 {
 		return errors.New("keychain has no keys")
 	}
 	t.txs = make([]*avm.Tx, numTxs)
 	for i := 0; i < numTxs; i++ {
-		tx, err := t.createTx(assetID, 1, addrs[0], addrs[0], now)
+		tx, err := t.createTx(assetID, 1, ids.GenerateTestShortID(), ids.GenerateTestShortID(), now)
 		if err != nil {
 			return err
 		}
