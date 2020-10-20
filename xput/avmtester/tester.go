@@ -191,6 +191,7 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 // Assumes t.processingVtxsCond.L is held
 func (t *tester) Issue(ctx *snow.Context, containerID ids.ID, container []byte) error {
 	t.processingVtxs++
+	t.Log.Info("issuing. processingVtxs: %d", t.processingVtxs)
 	return nil
 }
 
