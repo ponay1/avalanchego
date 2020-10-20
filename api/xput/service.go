@@ -153,20 +153,22 @@ func (s *service) Run(_ *http.Request, args *RunArgs, reply *api.SuccessResponse
 	}
 
 	// Run the test
-	_, err = t.Run(avmtester.TestConfig{
-		NumTxs: int(args.NumTxs),
-		UTXOID: avax.UTXOID{
-			TxID:        args.TxID,
-			OutputIndex: uint32(args.OutputIndex),
-		},
-		LogFreq:    logFreq,
-		UTXOAmount: uint64(args.Amount),
-		Key:        key,
-		BatchSize:  int(args.BatchSize),
-	})
-	if err != nil {
-		return fmt.Errorf("couldn't run xput test: %w", err)
-	}
+	go func() {
+		_, err = t.Run(avmtester.TestConfig{
+			NumTxs: int(args.NumTxs),
+			UTXOID: avax.UTXOID{
+				TxID:        args.TxID,
+				OutputIndex: uint32(args.OutputIndex),
+			},
+			LogFreq:    logFreq,
+			UTXOAmount: uint64(args.Amount),
+			Key:        key,
+			BatchSize:  int(args.BatchSize),
+		})
+		if err != nil {
+			s.log.Warn("error while running xput test: %s", err)
+		}
+	}()
 
 	reply.Success = true
 	return nil
