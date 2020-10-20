@@ -153,6 +153,7 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 			// Wait until we process some vertices before issuing more
 			t.processingVtxsCond.Wait()
 		}
+		t.Log.Info("there are %d processing vtxs. max: %d", t.processingVtxs, t.MaxProcessingVtxs) // todo remove
 
 		txs, err := t.nextTxs(config.BatchSize)
 		if err != nil {
