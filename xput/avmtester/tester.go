@@ -149,11 +149,10 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 		t.processingVtxsCond.L.Lock()
 		t.Log.Info("grabbed lock") // todo remove
 		for t.processingVtxs > t.MaxProcessingVtxs {
-			t.Log.Info("waiting") // todo remove
+			t.Log.Info("there are %d processing vtxs. waiting", t.processingVtxs) // todo remove
 			// Wait until we process some vertices before issuing more
 			t.processingVtxsCond.Wait()
 		}
-		t.Log.Info("generating txs") // todo remove
 
 		txs, err := t.nextTxs(config.BatchSize)
 		if err != nil {
@@ -175,7 +174,7 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 			t.processingVtxsCond.L.Unlock()
 			return nil, fmt.Errorf("failed to issue tx: %s", err)
 		}
-		t.Log.Info("issued txs") // todo remove
+		t.Log.Info("issued %d txs", len(snowstormTxs)) // todo remove
 		t.processingVtxsCond.L.Unlock()
 		t.Log.Info("released lock") // todo remove
 
