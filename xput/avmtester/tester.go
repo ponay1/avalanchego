@@ -6,6 +6,7 @@ package avmtester
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"sync"
 
 	stdmath "math"
@@ -28,6 +29,7 @@ import (
 
 const (
 	defaultMaxOutstandingVtxs = 50
+	defaultNumAddrs           = 100
 )
 
 var (
@@ -367,14 +369,26 @@ func (t *tester) generateTxs(numTxs int, assetID ids.ID) error {
 		frequency = 1
 	}
 
-	now := t.Clock.Unix()
-	addrs := t.keychain.Addresses().CappedList(1)
+	factory := crypto.FactorySECP256K1R{}
+	keys := make([]*crypto.PrivateKeySECP256K1R, defaultNumAddrs)
+	addrs := t.keychain.Addresses().List()
 	if len(addrs) == 0 {
 		return errors.New("keychain has no keys")
 	}
+	for i := 0; i < defaultNumAddrs; i++ {
+		key, err := factory.NewPrivateKey()
+		if err != nil {
+			return err
+		}
+		keys[i] = key.(*crypto.PrivateKeySECP256K1R)
+		addrs = append(addrs, keys[i].PublicKey().Address())
+	}
+
+	now := t.Clock.Unix()
 	t.txs = make([]*avm.Tx, numTxs)
+	lenAddrs := len(addrs)
 	for i := 0; i < numTxs; i++ {
-		tx, err := t.createTx(assetID, 1, ids.GenerateTestShortID(), addrs[0], now)
+		tx, err := t.createTx(assetID, 1, ids.GenerateTestShortID(), addrs[rand.Intn(lenAddrs)], now)
 		if err != nil {
 			return err
 		}
