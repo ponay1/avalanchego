@@ -29,7 +29,7 @@ import (
 
 const (
 	defaultMaxOutstandingVtxs = 50
-	defaultNumAddrs           = 2500
+	defaultNumAddrs           = 10000
 )
 
 var (
