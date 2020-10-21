@@ -168,7 +168,6 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 				return nil, fmt.Errorf("failed to parse tx: %s", err)
 			}
 		}
-		t.Log.Info("issuing %d txs", len(snowstormTxs)) // todo remove
 
 		if err := t.Engine.Issue(snowstormTxs); err != nil {
 			t.processingVtxsCond.L.Unlock()
@@ -188,7 +187,6 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 // Assumes t.processingVtxsCond.L is held
 func (t *tester) Issue(ctx *snow.Context, containerID ids.ID, container []byte) error {
 	t.processingVtxs++
-	t.Log.Info("issuing. processingVtxs: %d", t.processingVtxs)
 	return nil
 }
 
