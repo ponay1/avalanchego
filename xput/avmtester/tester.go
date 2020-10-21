@@ -149,7 +149,6 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 	for i := 0; i < config.NumTxs; i++ {
 		t.processingVtxsCond.L.Lock()
 		for t.processingVtxs >= t.MaxProcessingVtxs {
-			t.Log.Debug("there are %d processing vtxs. waiting", t.processingVtxs) // todo remove
 			// Wait until we process some vertices before issuing more
 			t.processingVtxsCond.Wait()
 		}
