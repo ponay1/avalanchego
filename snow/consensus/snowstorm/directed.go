@@ -72,7 +72,7 @@ func (dg *Directed) IsVirtuous(tx Tx) bool {
 
 	// The tx isn't processing, so we need to check to see if it conflicts with
 	// any of the other txs that are currently processing.
-	for _, utxoID := range tx.InputIDs().List() {
+	for _, utxoID := range tx.InputIDs() {
 		if _, exists := dg.utxos[utxoID.Key()]; exists {
 			// A currently processing tx names the same input as the provided
 			// tx, so the provided tx would be rogue.
@@ -98,8 +98,8 @@ func (dg *Directed) Conflicts(tx Tx) ids.Set {
 	} else {
 		// If the tx isn't currently processing, the conflicting txs are the
 		// union of all the txs that spend an input that this tx spends.
-		for _, input := range tx.InputIDs().List() {
-			if spends, exists := dg.utxos[input.Key()]; exists {
+		for _, inputID := range tx.InputIDs() {
+			if spends, exists := dg.utxos[inputID.Key()]; exists {
 				conflicts.Union(spends)
 			}
 		}
@@ -119,12 +119,12 @@ func (dg *Directed) Add(tx Tx) error {
 	// For each UTXO consumed by the tx:
 	// * Add edges between this tx and txs that consume this UTXO
 	// * Mark this tx as attempting to consume this UTXO
-	for _, inputID := range tx.InputIDs().List() {
-		inputKey := inputID.Key()
+	for _, inputID := range tx.InputIDs() {
+		inputIDKey := inputID.Key()
 
 		// Get the set of txs that are currently processing that also consume
 		// this UTXO
-		spenders := dg.utxos[inputKey]
+		spenders := dg.utxos[inputIDKey]
 
 		// Add all the txs that spend this UTXO to this txs conflicts. These
 		// conflicting txs must be preferred over this tx. We know this because
@@ -156,7 +156,7 @@ func (dg *Directed) Add(tx Tx) error {
 		spenders.Add(txID)
 
 		// Because this isn't a pointer, we should re-map the set.
-		dg.utxos[inputKey] = spenders
+		dg.utxos[inputIDKey] = spenders
 	}
 
 	// Mark this transaction as rogue if had any conflicts registered above
@@ -271,11 +271,8 @@ func (dg *Directed) accept(txID ids.ID) error {
 
 	// This tx is consuming all the UTXOs from its inputs, so we can prune them
 	// all from memory
-	for _, inputID := range txNode.tx.InputIDs().List() {
+	for _, inputID := range txNode.tx.InputIDs() {
 		delete(dg.utxos, inputID.Key())
-	}
-	for inputIDKey := range txNode.tx.InputIDs() {
-		delete(dg.utxos, inputIDKey)
 	}
 
 	// This tx is now accepted, so it shouldn't be part of the virtuous set or
@@ -299,28 +296,27 @@ func (dg *Directed) accept(txID ids.ID) error {
 // reject all the named txIDs and remove them from the graph
 func (dg *Directed) reject(conflictIDs ids.Set) error {
 	for conflictKey := range conflictIDs {
-		conflictID := ids.NewID(conflictKey)
 		conflict := dg.txs[conflictKey]
 		// This tx is no longer an option for consuming the UTXOs from its
 		// inputs, so we should remove their reference to this tx.
-		for _, inputID := range conflict.tx.InputIDs().List() {
-			inputKey := inputID.Key()
-			txIDs, exists := dg.utxos[inputKey]
+		for _, inputID := range conflict.tx.InputIDs() {
+			inputIDKey := inputID.Key()
+			txIDs, exists := dg.utxos[inputIDKey]
 			if !exists {
 				// This UTXO may no longer exist because it was removed due to
 				// the acceptance of a tx. If that is the case, there is nothing
 				// left to remove from memory.
 				continue
 			}
-			txIDs.Remove(conflictID)
+			delete(txIDs, conflictKey)
 			if txIDs.Len() == 0 {
 				// If this tx was the last tx consuming this UTXO, we should
 				// prune the UTXO from memory entirely.
-				delete(dg.utxos, inputKey)
+				delete(dg.utxos, inputIDKey)
 			} else {
 				// If this UTXO still has txs consuming it, then we should make
 				// sure this update is written back to the UTXOs map.
-				dg.utxos[inputKey] = txIDs
+				dg.utxos[inputIDKey] = txIDs
 			}
 		}
 
@@ -329,11 +325,11 @@ func (dg *Directed) reject(conflictIDs ids.Set) error {
 
 		// While it's statistically unlikely that something being rejected is
 		// preferred, it is handled for completion.
-		dg.preferences.Remove(conflictID)
+		delete(dg.preferences, conflictKey)
 
 		// remove the edge between this node and all its neighbors
-		dg.removeConflict(conflictID, conflict.ins.List()...)
-		dg.removeConflict(conflictID, conflict.outs.List()...)
+		dg.removeConflict(conflictKey, conflict.ins.List()...)
+		dg.removeConflict(conflictKey, conflict.outs.List()...)
 
 		if err := dg.rejectTx(conflict.tx); err != nil {
 			return err
@@ -379,7 +375,7 @@ func (dg *Directed) redirectEdge(txNode *directedTx, conflictID ids.ID) bool {
 	return true
 }
 
-func (dg *Directed) removeConflict(txID ids.ID, neighborIDs ...ids.ID) {
+func (dg *Directed) removeConflict(txID [32]byte, neighborIDs ...ids.ID) {
 	for _, neighborID := range neighborIDs {
 		neighborKey := neighborID.Key()
 		neighbor, exists := dg.txs[neighborKey]
@@ -390,8 +386,8 @@ func (dg *Directed) removeConflict(txID ids.ID, neighborIDs ...ids.ID) {
 		}
 
 		// Remove any edge to this tx.
-		neighbor.ins.Remove(txID)
-		neighbor.outs.Remove(txID)
+		delete(neighbor.ins, txID)
+		delete(neighbor.outs, txID)
 
 		if neighbor.outs.Len() == 0 {
 			// If this tx should now be preferred, make sure its status is
