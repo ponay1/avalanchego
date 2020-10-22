@@ -349,7 +349,7 @@ func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr, changeAddr id
 					OutputOwners: secp256k1fx.OutputOwners{
 						Locktime:  0,
 						Threshold: 1,
-						Addrs:     []ids.ShortID{t.addrs[rand.Intn(len(addrs))]},
+						Addrs:     []ids.ShortID{t.addrs[rand.Intn(numAddrs)]},
 					},
 				},
 			})
