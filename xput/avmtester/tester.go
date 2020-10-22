@@ -6,6 +6,7 @@ package avmtester
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"sync"
 
 	stdmath "math"
@@ -369,19 +370,13 @@ func (t *tester) generateTxs(numTxs int, assetID ids.ID) error {
 		t.keychain.Add(key.(*crypto.PrivateKeySECP256K1R))
 	}
 
+	addrs := t.keychain.Addresses().List()
+	numAddrs := len(addrs)
 	now := t.Clock.Unix()
 	t.txs = make([]*avm.Tx, numTxs)
 	for i := 0; i < numTxs; i++ {
-		destAddr, err := t.getAddress()
-		if err != nil {
-			return err
-		}
-		changeAddr, err := t.getAddress()
-		if err != nil {
-			return err
-		}
 		// Tx sends 10*the tx fee to [destAddr]
-		tx, err := t.createTx(assetID, 10*t.TxFee, destAddr, changeAddr, now)
+		tx, err := t.createTx(assetID, 10*t.TxFee, addrs[rand.Intn(numAddrs)], addrs[rand.Intn(numAddrs)], now)
 		if err != nil {
 			return err
 		}
