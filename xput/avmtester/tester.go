@@ -375,8 +375,7 @@ func (t *tester) generateTxs(numTxs int, assetID ids.ID) error {
 	now := t.Clock.Unix()
 	t.txs = make([]*avm.Tx, numTxs)
 	for i := 0; i < numTxs; i++ {
-		// Tx sends 10*the tx fee to [destAddr]
-		tx, err := t.createTx(assetID, 10*t.TxFee, addrs[rand.Intn(numAddrs)], addrs[rand.Intn(numAddrs)], now)
+		tx, err := t.createTx(assetID, 1, addrs[rand.Intn(numAddrs)], addrs[rand.Intn(numAddrs)], now)
 		if err != nil {
 			return err
 		}
