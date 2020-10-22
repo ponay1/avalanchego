@@ -20,15 +20,15 @@ import (
 const (
 	// minBlockCacheSize is the minimum number of bytes to use for block caching
 	// in leveldb.
-	minBlockCacheSize = 64 * opt.MiB
+	minBlockCacheSize = 128 * opt.MiB
 
 	// minWriteBufferSize is the minimum number of bytes to use for buffers in
 	// leveldb.
-	minWriteBufferSize = 64 * opt.MiB
+	minWriteBufferSize = 128 * opt.MiB
 
 	// minHandleCap is the minimum number of files descriptors to cap levelDB to
 	// use
-	minHandleCap = 32
+	minHandleCap = 64
 )
 
 // Database is a persistent key-value store. Apart from basic data storage
@@ -60,7 +60,7 @@ func New(file string, blockCacheSize, writeBufferSize, handleCap int) (*Database
 	// Open the db and recover any potential corruptions
 	db, err := leveldb.OpenFile(file, &opt.Options{
 		OpenFilesCacheCapacity: handleCap,
-		BlockSize:              16 * opt.KiB,
+		BlockSize:              32 * opt.KiB,
 		BlockCacheCapacity:     blockCacheSize,
 		CompactionL0Trigger:    16,
 		CompactionTableSize:    8 * opt.MiB,
