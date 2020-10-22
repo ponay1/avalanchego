@@ -353,18 +353,19 @@ func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr, changeAddr id
 					},
 				},
 			})
-		}
-		outs = append(outs, &avax.TransferableOutput{
-			Asset: avax.Asset{ID: assetID},
-			Out: &secp256k1fx.TransferOutput{
-				Amt: changeAmt,
-				OutputOwners: secp256k1fx.OutputOwners{
-					Locktime:  0,
-					Threshold: 1,
-					Addrs:     []ids.ShortID{changeAddr},
+		} else {
+			outs = append(outs, &avax.TransferableOutput{
+				Asset: avax.Asset{ID: assetID},
+				Out: &secp256k1fx.TransferOutput{
+					Amt: changeAmt,
+					OutputOwners: secp256k1fx.OutputOwners{
+						Locktime:  0,
+						Threshold: 1,
+						Addrs:     []ids.ShortID{changeAddr},
+					},
 				},
-			},
-		})
+			})
+		}
 	}
 
 	avax.SortTransferableOutputs(outs, t.codec)
