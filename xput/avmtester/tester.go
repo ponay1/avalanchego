@@ -327,7 +327,7 @@ func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr, changeAddr id
 	if changeAmt := amountSpent - amount - t.TxFee; changeAmt > 0 {
 		// If there's a lot of change, split it among multiple addresses
 		numAddrs := len(t.addrs)
-		if changeAmt > 11*t.TxFee {
+		if changeAmt > 51*t.TxFee {
 			for i := 0; i < 10; i++ {
 				outs = append(outs, &avax.TransferableOutput{
 					Asset: avax.Asset{ID: assetID},
