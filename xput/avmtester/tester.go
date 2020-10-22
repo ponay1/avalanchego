@@ -265,7 +265,7 @@ func (t *tester) removeUTXO(utxoID ids.ID) {
 
 // createTx returns a tx that sends [amount] of [assetID] to [destAddr]
 // Any change is sent to an address controlled by this wallet
-func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr, changeAddr ids.ShortID, time uint64) (*avm.Tx, error) {
+func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr ids.ShortID, time uint64) (*avm.Tx, error) {
 	if amount == 0 {
 		return nil, errAmtZero
 	}
@@ -327,25 +327,11 @@ func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr, changeAddr id
 	if changeAmt := amountSpent - amount - t.TxFee; changeAmt > 0 {
 		// If there's a lot of change, split it among multiple addresses
 		numAddrs := len(t.addrs)
-		if changeAmt > 51*t.TxFee {
-			for i := 0; i < 10; i++ {
-				outs = append(outs, &avax.TransferableOutput{
-					Asset: avax.Asset{ID: assetID},
-					Out: &secp256k1fx.TransferOutput{
-						Amt: t.TxFee,
-						OutputOwners: secp256k1fx.OutputOwners{
-							Locktime:  0,
-							Threshold: 1,
-							Addrs:     []ids.ShortID{t.addrs[rand.Intn(numAddrs)]},
-						},
-					},
-				})
-				changeAmt -= t.TxFee
-			}
+		for i := 0; i < 25 && changeAmt > t.TxFee; i++ {
 			outs = append(outs, &avax.TransferableOutput{
 				Asset: avax.Asset{ID: assetID},
 				Out: &secp256k1fx.TransferOutput{
-					Amt: changeAmt,
+					Amt: t.TxFee,
 					OutputOwners: secp256k1fx.OutputOwners{
 						Locktime:  0,
 						Threshold: 1,
@@ -353,19 +339,19 @@ func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr, changeAddr id
 					},
 				},
 			})
-		} else {
-			outs = append(outs, &avax.TransferableOutput{
-				Asset: avax.Asset{ID: assetID},
-				Out: &secp256k1fx.TransferOutput{
-					Amt: changeAmt,
-					OutputOwners: secp256k1fx.OutputOwners{
-						Locktime:  0,
-						Threshold: 1,
-						Addrs:     []ids.ShortID{changeAddr},
-					},
-				},
-			})
+			changeAmt -= t.TxFee
 		}
+		outs = append(outs, &avax.TransferableOutput{
+			Asset: avax.Asset{ID: assetID},
+			Out: &secp256k1fx.TransferOutput{
+				Amt: changeAmt,
+				OutputOwners: secp256k1fx.OutputOwners{
+					Locktime:  0,
+					Threshold: 1,
+					Addrs:     []ids.ShortID{t.addrs[rand.Intn(numAddrs)]},
+				},
+			},
+		})
 	}
 
 	avax.SortTransferableOutputs(outs, t.codec)
@@ -399,17 +385,14 @@ func (t *tester) generateTxs(numTxs int, assetID ids.ID) error {
 		}
 		t.addrs = append(t.addrs, addr)
 	}
-	t.createAddress()
 
 	now := t.Clock.Unix()
 	t.txs = make([]*avm.Tx, numTxs)
-	numAddrs := len(t.addrs)
 	for i := 0; i < numTxs; i++ {
-		tx, err := t.createTx(assetID, 1, ids.GenerateTestShortID(), t.addrs[rand.Intn(numAddrs)], now)
+		tx, err := t.createTx(assetID, 1, ids.GenerateTestShortID(), now)
 		if err != nil {
 			return err
 		}
-
 		for _, utxoID := range tx.InputUTXOs() {
 			t.removeUTXO(utxoID.InputID())
 		}
@@ -419,7 +402,7 @@ func (t *tester) generateTxs(numTxs int, assetID ids.ID) error {
 
 		// Periodically log progress
 		if numGenerated := i + 1; numGenerated%frequency == 0 {
-			t.Log.Info("Generated %d out of %d transactions", numGenerated, numTxs)
+			t.Log.Info("Generated %d out of %d transactions. # UTXOs: %d", numGenerated, numTxs, len(t.utxoSet.UTXOs))
 		}
 
 		t.txs[i] = tx
