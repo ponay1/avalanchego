@@ -339,11 +339,12 @@ func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr, changeAddr id
 						},
 					},
 				})
+				changeAmt -= t.TxFee
 			}
 			outs = append(outs, &avax.TransferableOutput{
 				Asset: avax.Asset{ID: assetID},
 				Out: &secp256k1fx.TransferOutput{
-					Amt: amountSpent - amount - 11*t.TxFee,
+					Amt: changeAmt,
 					OutputOwners: secp256k1fx.OutputOwners{
 						Locktime:  0,
 						Threshold: 1,
@@ -355,7 +356,7 @@ func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr, changeAddr id
 		outs = append(outs, &avax.TransferableOutput{
 			Asset: avax.Asset{ID: assetID},
 			Out: &secp256k1fx.TransferOutput{
-				Amt: amountSpent - amount - t.TxFee,
+				Amt: changeAmt,
 				OutputOwners: secp256k1fx.OutputOwners{
 					Locktime:  0,
 					Threshold: 1,
