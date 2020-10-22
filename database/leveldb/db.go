@@ -63,6 +63,7 @@ func New(file string, blockCacheSize, writeBufferSize, handleCap int) (*Database
 		BlockSize:              16 * opt.KiB,
 		BlockCacheCapacity:     blockCacheSize,
 		CompactionL0Trigger:    16,
+		CompactionTableSize:    8 * opt.MiB,
 		// There are two buffers of size WriteBuffer used.
 		WriteBuffer: writeBufferSize / 2,
 		Filter:      filter.NewBloomFilter(10),
