@@ -323,7 +323,35 @@ func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr, changeAddr id
 		},
 	}}
 
-	if amountSpent > amount+t.TxFee {
+	if changeAmt := amountSpent - amount - t.TxFee; changeAmt > 0 {
+		addrs := t.keychain.Addresses().List()
+		// If there's a lot of change, split it among multiple addresses
+		if changeAmt > 11*t.TxFee {
+			for i := 0; i < 10; i++ {
+				outs = append(outs, &avax.TransferableOutput{
+					Asset: avax.Asset{ID: assetID},
+					Out: &secp256k1fx.TransferOutput{
+						Amt: t.TxFee,
+						OutputOwners: secp256k1fx.OutputOwners{
+							Locktime:  0,
+							Threshold: 1,
+							Addrs:     []ids.ShortID{addrs[rand.Intn(len(addrs))]},
+						},
+					},
+				})
+			}
+			outs = append(outs, &avax.TransferableOutput{
+				Asset: avax.Asset{ID: assetID},
+				Out: &secp256k1fx.TransferOutput{
+					Amt: amountSpent - amount - 11*t.TxFee,
+					OutputOwners: secp256k1fx.OutputOwners{
+						Locktime:  0,
+						Threshold: 1,
+						Addrs:     []ids.ShortID{addrs[rand.Intn(len(addrs))]},
+					},
+				},
+			})
+		}
 		outs = append(outs, &avax.TransferableOutput{
 			Asset: avax.Asset{ID: assetID},
 			Out: &secp256k1fx.TransferOutput{
@@ -375,7 +403,7 @@ func (t *tester) generateTxs(numTxs int, assetID ids.ID) error {
 	now := t.Clock.Unix()
 	t.txs = make([]*avm.Tx, numTxs)
 	for i := 0; i < numTxs; i++ {
-		tx, err := t.createTx(assetID, 1, addrs[rand.Intn(numAddrs)], addrs[rand.Intn(numAddrs)], now)
+		tx, err := t.createTx(assetID, 1, ids.GenerateTestShortID(), addrs[rand.Intn(numAddrs)], now)
 		if err != nil {
 			return err
 		}
