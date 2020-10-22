@@ -29,7 +29,7 @@ import (
 
 const (
 	defaultMaxOutstandingVtxs = 50
-	defaultNumAddrs           = 5000
+	defaultNumAddrs           = 2500
 )
 
 var (
@@ -327,7 +327,7 @@ func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr ids.ShortID, t
 	if changeAmt := amountSpent - amount - t.TxFee; changeAmt > 0 {
 		// If there's a lot of change, split it among multiple addresses
 		numAddrs := len(t.addrs)
-		for i := 0; i < 25 && changeAmt > t.TxFee; i++ {
+		for i := 0; i < 5 && changeAmt > t.TxFee; i++ {
 			outs = append(outs, &avax.TransferableOutput{
 				Asset: avax.Asset{ID: assetID},
 				Out: &secp256k1fx.TransferOutput{
