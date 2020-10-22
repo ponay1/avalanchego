@@ -29,7 +29,7 @@ import (
 
 const (
 	defaultMaxOutstandingVtxs = 50
-	defaultNumAddrs           = 10000
+	defaultNumAddrs           = 5000
 )
 
 var (
@@ -75,6 +75,7 @@ type tester struct {
 	Config
 	lock     *sync.Mutex
 	keychain *secp256k1fx.Keychain // Mapping from public address to the SigningKeys
+	addrs    []ids.ShortID         // List of addresses this tester controls
 	utxoSet  *UTXOSet              // Mapping from utxoIDs to UTXOs
 	// Asset ID --> Balance of this asset held by this wallet
 	balance map[[32]byte]uint64
@@ -324,8 +325,8 @@ func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr, changeAddr id
 	}}
 
 	if changeAmt := amountSpent - amount - t.TxFee; changeAmt > 0 {
-		addrs := t.keychain.Addresses().List()
 		// If there's a lot of change, split it among multiple addresses
+		numAddrs := len(t.addrs)
 		if changeAmt > 11*t.TxFee {
 			for i := 0; i < 10; i++ {
 				outs = append(outs, &avax.TransferableOutput{
@@ -335,7 +336,7 @@ func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr, changeAddr id
 						OutputOwners: secp256k1fx.OutputOwners{
 							Locktime:  0,
 							Threshold: 1,
-							Addrs:     []ids.ShortID{addrs[rand.Intn(len(addrs))]},
+							Addrs:     []ids.ShortID{t.addrs[rand.Intn(numAddrs)]},
 						},
 					},
 				})
@@ -348,7 +349,7 @@ func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr, changeAddr id
 					OutputOwners: secp256k1fx.OutputOwners{
 						Locktime:  0,
 						Threshold: 1,
-						Addrs:     []ids.ShortID{addrs[rand.Intn(len(addrs))]},
+						Addrs:     []ids.ShortID{t.addrs[rand.Intn(len(addrs))]},
 					},
 				},
 			})
@@ -390,21 +391,20 @@ func (t *tester) generateTxs(numTxs int, assetID ids.ID) error {
 		frequency = 1
 	}
 
-	factory := crypto.FactorySECP256K1R{}
 	for i := 0; i < defaultNumAddrs; i++ {
-		key, err := factory.NewPrivateKey()
+		addr, err := t.createAddress()
 		if err != nil {
 			return err
 		}
-		t.keychain.Add(key.(*crypto.PrivateKeySECP256K1R))
+		t.addrs = append(t.addrs, addr)
 	}
+	t.createAddress()
 
-	addrs := t.keychain.Addresses().List()
-	numAddrs := len(addrs)
 	now := t.Clock.Unix()
 	t.txs = make([]*avm.Tx, numTxs)
+	numAddrs := len(t.addrs)
 	for i := 0; i < numTxs; i++ {
-		tx, err := t.createTx(assetID, 1, ids.GenerateTestShortID(), addrs[rand.Intn(numAddrs)], now)
+		tx, err := t.createTx(assetID, 1, ids.GenerateTestShortID(), t.addrs[rand.Intn(numAddrs)], now)
 		if err != nil {
 			return err
 		}
