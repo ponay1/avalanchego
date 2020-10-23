@@ -153,7 +153,7 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 		// don't spend more than 25 ms at a time issuing txs
 		// This ensures this validator still responds to queries on time
 		if time.Since(startTime) > 25*time.Millisecond {
-			time.Sleep(50 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 			startTime = time.Now()
 		}
 		t.processingVtxsCond.L.Lock()
