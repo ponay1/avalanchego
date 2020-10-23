@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sync"
+	"time"
 
 	stdmath "math"
 
@@ -146,8 +147,15 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 		return nil, fmt.Errorf("failed to generate txs: %s", err)
 	}
 
+	startTime := time.Now()
 	// Issue the txs
 	for i := 0; i < config.NumTxs; i++ {
+		// don't spend more than 25 ms at a time issuing txs
+		// This ensures this validator still responds to queries on time
+		if time.Since(startTime) > 25*time.Millisecond {
+			time.Sleep(1 * time.Second)
+			startTime = time.Now()
+		}
 		t.processingVtxsCond.L.Lock()
 		for t.processingVtxs >= t.MaxProcessingVtxs {
 			// Wait until we process some vertices before issuing more
