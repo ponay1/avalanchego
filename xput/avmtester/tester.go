@@ -142,7 +142,7 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 		},
 	})
 
-	testDuration := 1 * time.Minute // TODO add this to config
+	testDuration := 10 * time.Minute // TODO add this to config
 
 	// Spawn goroutine to create tx batches
 	txBatchChan := make(chan []*avm.Tx, 25) // todo replace 25 with constant
