@@ -145,7 +145,7 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 	testDuration := 10 * time.Minute // TODO add this to config
 
 	// Spawn goroutine to create tx batches
-	txBatchChan := make(chan []*avm.Tx, 2*t.MinProcessingVtxs) // todo replace 25 with constant
+	txBatchChan := make(chan []*avm.Tx, 10*t.MinProcessingVtxs) // todo replace with constant
 	stopChan := make(chan struct{})
 	defer func() {
 		// Signal tx generator to stop when we're done
