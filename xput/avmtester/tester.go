@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	defaultMaxOutstandingVtxs = 50
+	defaultMinOutstandingVtxs = 50
 	defaultNumAddrs           = 1000
 )
 
@@ -67,7 +67,7 @@ type Config struct {
 	Log               logging.Logger
 	TxFee             uint64
 	AvaxAssetID       ids.ID
-	MaxProcessingVtxs int
+	MinProcessingVtxs int
 }
 
 // tester is a holder for keys and UTXOs for the Avalanche DAG.
@@ -83,7 +83,7 @@ type tester struct {
 	// Txs that will be issued as part of this test
 	txs []*avm.Tx
 
-	// Signalled when there are fewer than the maximum number of processing vertices
+	// Signalled when there are fewer than the minimum number of processing vertices
 	// Its lock is the engine's lock
 	processingVtxsCond *sync.Cond
 
@@ -145,9 +145,10 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 	testDuration := 10 * time.Minute // TODO add this to config
 
 	// Spawn goroutine to create tx batches
-	txBatchChan := make(chan []*avm.Tx, 25) // todo replace 25 with constant
+	txBatchChan := make(chan []*avm.Tx, 2*t.MinProcessingVtxs) // todo replace 25 with constant
 	stopChan := make(chan struct{})
 	defer func() {
+		// Signal tx generator to stop when we're done
 		stopChan <- struct{}{}
 	}()
 	go t.generateTxs(t.AvaxAssetID, config.BatchSize, txBatchChan, stopChan)
@@ -157,7 +158,7 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 	// Issue the txs
 	for time.Now().Sub(startTime) < testDuration {
 		t.processingVtxsCond.L.Lock()
-		for t.processingVtxs >= t.MaxProcessingVtxs {
+		for t.processingVtxs > t.MinProcessingVtxs {
 			// Wait until we process some vertices before issuing more
 			t.processingVtxsCond.Wait()
 		}
@@ -182,8 +183,6 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 		// 	t.Log.Info("sent %d of %d txs", (i+1)*config.BatchSize, config.NumTxs)
 		// }
 	}
-	// Signal tx generator to stop
-	stopChan <- struct{}{}
 	return nil, nil
 }
 
@@ -198,7 +197,7 @@ func (t *tester) Issue(ctx *snow.Context, containerID ids.ID, container []byte) 
 // Assumes t.processingVtxsCond.L is held
 func (t *tester) Accept(ctx *snow.Context, containerID ids.ID, container []byte) error {
 	t.processingVtxs--
-	if t.processingVtxs < t.MaxProcessingVtxs {
+	if t.processingVtxs < t.MinProcessingVtxs {
 		t.processingVtxsCond.Signal()
 	}
 	return nil
@@ -208,7 +207,7 @@ func (t *tester) Accept(ctx *snow.Context, containerID ids.ID, container []byte)
 // Assumes t.processingVtxsCond.L is held
 func (t *tester) Reject(ctx *snow.Context, containerID ids.ID, container []byte) error {
 	t.processingVtxs--
-	if t.processingVtxs < t.MaxProcessingVtxs {
+	if t.processingVtxs < t.MinProcessingVtxs {
 		t.processingVtxsCond.Signal()
 	}
 	return nil
