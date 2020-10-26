@@ -33,6 +33,16 @@ func (b *Bag) init() {
 	}
 }
 
+func (b *Bag) Clear() {
+	for key := range b.counts {
+		delete(b.counts, key)
+	}
+	b.size = 0
+	b.modeFreq = 0
+	b.threshold = 0
+	b.metThreshold.Clear()
+}
+
 // SetThreshold sets the number of times an ID must be added to be contained in
 // the threshold set.
 func (b *Bag) SetThreshold(threshold int) {

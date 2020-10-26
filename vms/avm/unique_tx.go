@@ -203,7 +203,11 @@ func (tx *UniqueTx) Dependencies() []snowstorm.Tx {
 		return tx.deps
 	}
 
-	txIDs := ids.Set{}
+	txIDs := tx.vm.setPool.Get().(ids.Set)
+	txIDs.Clear()
+	defer func() {
+		tx.vm.setPool.Put(txIDs)
+	}()
 	for _, in := range tx.InputUTXOs() {
 		if in.Symbolic() {
 			continue
