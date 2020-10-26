@@ -5,6 +5,7 @@ package avalanche
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -54,6 +55,10 @@ type Transitive struct {
 	// txBlocked tracks operations that are blocked on transactions
 	vtxBlocked, txBlocked events.Blocker
 
+	// Pool of ids.Set we use so that we don't need to keep allocating them
+	// You can't assume that a set retrieved from here is empty
+	setPool sync.Pool
+
 	errs wrappers.Errs
 }
 
@@ -63,6 +68,11 @@ func (t *Transitive) Initialize(config Config) error {
 
 	t.Params = config.Params
 	t.Consensus = config.Consensus
+	t.setPool = sync.Pool{
+		New: func() interface{} {
+			return ids.Set{}
+		},
+	}
 
 	factory := poll.NewEarlyTermNoTraversalFactory(config.Params.Alpha)
 	t.polls = poll.NewSet(factory,
@@ -156,7 +166,8 @@ func (t *Transitive) GetAncestors(vdr ids.ShortID, requestID uint32, vtxID ids.I
 	queue[0] = vertex
 	ancestorsBytesLen := 0                                               // length, in bytes, of vertex and its ancestors
 	ancestorsBytes := make([][]byte, 0, common.MaxContainersPerMultiPut) // vertex and its ancestors in BFS order
-	visited := ids.Set{}                                                 // IDs of vertices that have been in queue before
+	visited := t.setPool.Get().(ids.Set)                                 // IDs of vertices that have been in queue before
+	visited.Clear()
 	visited.Add(vertex.ID())
 
 	for len(ancestorsBytes) < common.MaxContainersPerMultiPut && len(queue) > 0 && time.Since(startTime) < common.MaxTimeFetchingAncestors {
@@ -185,6 +196,7 @@ func (t *Transitive) GetAncestors(vdr ids.ShortID, requestID uint32, vtxID ids.I
 			}
 		}
 	}
+	t.setPool.Put(visited)
 
 	t.metrics.getAncestorsVtxs.Observe(float64(len(ancestorsBytes)))
 	t.Sender.MultiPut(vdr, requestID, ancestorsBytes)
@@ -455,11 +467,11 @@ func (t *Transitive) issue(vtx avalanche.Vertex) error {
 	if err != nil {
 		return err
 	}
-	txIDs := ids.Set{}
+	txIDs := t.setPool.Get().(ids.Set)
+	txIDs.Clear()
 	for _, tx := range txs {
 		txIDs.Add(tx.ID())
 	}
-
 	for _, tx := range txs {
 		for _, dep := range tx.Dependencies() {
 			depID := dep.ID()
@@ -470,6 +482,7 @@ func (t *Transitive) issue(vtx avalanche.Vertex) error {
 			}
 		}
 	}
+	t.setPool.Put(txIDs)
 
 	t.Ctx.Log.Verbo("vertex %s is blocking on %d vertices and %d transactions",
 		vtxID, i.vtxDeps.Len(), i.txDeps.Len())
@@ -499,8 +512,14 @@ func (t *Transitive) issue(vtx avalanche.Vertex) error {
 // Otherwise, some txs may not be put into vertices that are issued.
 // If [empty], will always result in a new poll.
 func (t *Transitive) batch(txs []snowstorm.Tx, force, empty bool) error {
-	issuedTxs := ids.Set{}
-	consumed := ids.Set{}
+	issuedTxs := t.setPool.Get().(ids.Set)
+	issuedTxs.Clear()
+	consumed := t.setPool.Get().(ids.Set)
+	consumed.Clear()
+	defer func() {
+		t.setPool.Put(issuedTxs)
+		t.setPool.Put(consumed)
+	}()
 	issued := false
 	orphans := t.Consensus.Orphans()
 	start := 0
@@ -599,7 +618,11 @@ func (t *Transitive) issueBatch(txs []snowstorm.Tx) error {
 		return err
 	}
 
-	parentIDs := ids.Set{}
+	parentIDs := t.setPool.Get().(ids.Set)
+	parentIDs.Clear()
+	defer func() {
+		t.setPool.Put(parentIDs)
+	}()
 	for _, index := range indices {
 		parentIDs.Add(virtuousIDs[int(index)])
 	}
@@ -607,7 +630,7 @@ func (t *Transitive) issueBatch(txs []snowstorm.Tx) error {
 	vtx, err := t.Manager.BuildVertex(parentIDs, txs)
 	if err != nil {
 		t.Ctx.Log.Warn("error building new vertex with %d parents and %d transactions",
-			len(parentIDs), len(txs))
+			parentIDs.Len(), len(txs))
 		return nil
 	}
 	return t.issue(vtx)

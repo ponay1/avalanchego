@@ -4,6 +4,8 @@
 package avalanche
 
 import (
+	"sync"
+
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/snow"
 	"github.com/ava-labs/avalanchego/snow/choices"
@@ -42,6 +44,14 @@ type Topological struct {
 	// Tracks the conflict relations
 	cg snowstorm.Consensus
 
+	// Pool of ids.Set we use so that we don't need to keep allocating them
+	// You can't assume that a set retrieved from here is empty
+	setPool sync.Pool
+
+	// Pool of ids.Set we use so that we don't need to keep allocating them
+	// You can't assume that a bag retrieved from here is empty
+	bagPool sync.Pool
+
 	// preferred is the frontier of vtxIDs that are strongly preferred
 	// virtuous is the frontier of vtxIDs that are strongly virtuous
 	// orphans are the txIDs that are virtuous, but not preferred
@@ -70,6 +80,16 @@ func (ta *Topological) Initialize(
 
 	ta.ctx = ctx
 	ta.params = params
+	ta.setPool = sync.Pool{
+		New: func() interface{} {
+			return ids.Set{}
+		},
+	}
+	ta.bagPool = sync.Pool{
+		New: func() interface{} {
+			return ids.Bag{}
+		},
+	}
 
 	if err := ta.metrics.Initialize(ctx.Log, params.Namespace, params.Metrics); err != nil {
 		return err
@@ -174,17 +194,19 @@ func (ta *Topological) RecordPoll(responses ids.UniqueBag) error {
 		return err
 	}
 	// Collect the votes for each transaction: O(|Live Set|)
-	votes, err := ta.pushVotes(kahns, leaves)
-	if err != nil {
+	voteBag := ta.bagPool.Get().(ids.Bag)
+	voteBag.Clear()
+	if voteBag, err = ta.pushVotes(kahns, leaves, voteBag); err != nil {
 		return err
 	}
 	// Update the conflict graph: O(|Transactions|)
-	ta.ctx.Log.Verbo("Updating consumer confidences based on:\n%s", &votes)
-	if updated, err := ta.cg.RecordPoll(votes); !updated || err != nil {
+	ta.ctx.Log.Verbo("Updating consumer confidences based on:\n%s", &voteBag)
+	if updated, err := ta.cg.RecordPoll(voteBag); !updated || err != nil {
 		// If the transaction statuses weren't changed, there is no need to
 		// perform a traversal.
 		return err
 	}
+	ta.bagPool.Put(voteBag)
 	// Update the dag: O(|Live Set|)
 	return ta.updateFrontiers()
 }
@@ -204,7 +226,8 @@ func (ta *Topological) calculateInDegree(responses ids.UniqueBag) (
 	error,
 ) {
 	kahns := make(map[[32]byte]kahnNode, minMapSize)
-	leaves := ids.Set{}
+	leaves := ta.setPool.Get().(ids.Set)
+	leaves.Clear()
 
 	for _, vote := range responses.List() {
 		key := vote.Key()
@@ -230,8 +253,9 @@ func (ta *Topological) calculateInDegree(responses ids.UniqueBag) (
 			}
 		}
 	}
-
-	return kahns, leaves.List(), nil
+	leavesList := leaves.List()
+	ta.setPool.Put(leaves)
+	return kahns, leavesList, nil
 }
 
 // adds a new in-degree reference for all nodes
@@ -288,6 +312,7 @@ func (ta *Topological) markAncestorInDegrees(
 func (ta *Topological) pushVotes(
 	kahnNodes map[[32]byte]kahnNode,
 	leaves []ids.ID,
+	voteBag ids.Bag,
 ) (ids.Bag, error) {
 	votes := make(ids.UniqueBag)
 	txConflicts := make(map[[32]byte]ids.Set, minMapSize)
@@ -350,7 +375,7 @@ func (ta *Topological) pushVotes(
 	}
 
 	votes.Difference(&conflictingVotes)
-	return votes.Bag(ta.params.Alpha), nil
+	return votes.Bag(ta.params.Alpha, voteBag), nil
 }
 
 // If I've already checked, do nothing

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/gorilla/rpc/v2"
@@ -62,6 +63,10 @@ type VM struct {
 	ids.Aliaser
 
 	encodingManager formatting.EncodingManager
+
+	// Pool of ids.Set we use so that we don't need to keep allocating them
+	// You can't assume that a set retrieved from here is empty
+	setPool sync.Pool
 
 	// Contains information of where this VM is executing
 	ctx *snow.Context
@@ -167,6 +172,11 @@ func (vm *VM) Initialize(
 		return fmt.Errorf("problem creating encoding manager: %w", err)
 	}
 	vm.encodingManager = encodingManager
+	vm.setPool = sync.Pool{
+		New: func() interface{} {
+			return ids.Set{}
+		},
+	}
 
 	vm.pubsub = cjson.NewPubSubServer(ctx)
 	vm.genesisCodec = codec.New(math.MaxUint32, 1<<20)
@@ -474,7 +484,11 @@ func (vm *VM) GetUTXOs(
 		limit = maxUTXOsToFetch
 	}
 
-	seen := ids.Set{} // IDs of UTXOs already in the list
+	seen := vm.setPool.Get().(ids.Set) // IDs of UTXOs already in the list
+	seen.Clear()
+	defer func() {
+		vm.setPool.Put(seen)
+	}()
 	utxos := make([]*avax.UTXO, 0, limit)
 	lastAddr := ids.ShortEmpty
 	lastIndex := ids.Empty
