@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/ava-labs/avalanchego/api"
 	"github.com/ava-labs/avalanchego/ids"
@@ -71,8 +72,8 @@ func NewService(
 
 // RunArgs ...
 type RunArgs struct {
-	// Number of txs to issue in the test
-	NumTxs json.Uint64 `json:"numTxs"`
+	// Number of seconds to run the test for
+	Duration string `json:"duration"`
 
 	// UTXO to spend to pay for txs
 	TxID        ids.ID      `json:"txID"`
@@ -83,9 +84,14 @@ type RunArgs struct {
 	// CB58 repr. of a private key on the X-Chain
 	Key string `json:"key"`
 
+	// Txs per vertex
 	BatchSize json.Uint64 `json:"batchSize"`
 
+	// Minimum number of processing vtxs at a time
 	MinProcessingVtxs json.Uint64 `json:"minProcessingVtxs"`
+
+	// Print a log after every LogFreq vertices
+	LogFreq json.Uint64
 }
 
 // Run a throughput test. Only supports X-Chain right now.
@@ -140,26 +146,26 @@ func (s *service) Run(_ *http.Request, args *RunArgs, reply *api.SuccessResponse
 		return fmt.Errorf("expected *crypto.PrivateKeySECP256K1R but got %T", key)
 	}
 
-	logFreq := int(args.NumTxs) / 50
-	if logFreq > 10000 {
-		logFreq = 10000
-	}
-	if logFreq == 0 {
-		logFreq = 1
-	}
-
 	if args.BatchSize == 0 {
 		args.BatchSize = defaultBatchSize
+	}
+	if args.LogFreq == 0 {
+		args.LogFreq = 5000
+	}
+
+	duration, err := time.ParseDuration(args.Duration)
+	if err != nil {
+		return fmt.Errorf("couldn't parse test duration: %w", err)
 	}
 
 	// Run the test
 	_, err = t.Run(avmtester.TestConfig{
-		NumTxs: int(args.NumTxs),
+		Duration: duration,
 		UTXOID: avax.UTXOID{
 			TxID:        args.TxID,
 			OutputIndex: uint32(args.OutputIndex),
 		},
-		LogFreq:    logFreq,
+		LogFreq:    int(args.LogFreq),
 		UTXOAmount: uint64(args.Amount),
 		Key:        key,
 		BatchSize:  int(args.BatchSize),

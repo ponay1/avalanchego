@@ -39,8 +39,8 @@ var (
 
 // TestConfig is the configuration for a throughput test on the X-Chain
 type TestConfig struct {
-	// NumTxs to send during the test
-	NumTxs int
+	// How long the test will run
+	Duration time.Duration
 
 	// The UTXO spent to pay for this test
 	avax.UTXOID
@@ -49,7 +49,8 @@ type TestConfig struct {
 	// Controls the UTXO
 	Key *crypto.PrivateKeySECP256K1R
 
-	// Frequency of update logs
+	// Print an update every [LogFreq] transactions
+	// Defaults to 25,000
 	LogFreq int
 
 	// Txs per vertex
@@ -78,10 +79,9 @@ type tester struct {
 	keychain *secp256k1fx.Keychain // Mapping from public address to the SigningKeys
 	addrs    []ids.ShortID         // List of addresses this tester controls
 	utxoSet  *UTXOSet              // Mapping from utxoIDs to UTXOs
+
 	// Asset ID --> Balance of this asset held by this wallet
 	balance map[[32]byte]uint64
-	// Txs that will be issued as part of this test
-	txs []*avm.Tx
 
 	// Signalled when there are fewer than the minimum number of processing vertices
 	// Its lock is the engine's lock
@@ -142,10 +142,8 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 		},
 	})
 
-	testDuration := 10 * time.Minute // TODO add this to config
-
 	// Spawn goroutine to create tx batches
-	txBatchChan := make(chan []*avm.Tx, 10*t.MinProcessingVtxs) // todo replace with constant
+	txBatchChan := make(chan []*avm.Tx, 5*t.MinProcessingVtxs) // todo replace with constant
 	stopChan := make(chan struct{})
 	defer func() {
 		// Signal tx generator to stop when we're done
@@ -155,8 +153,9 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 
 	startTime := time.Now()
 	var err error
+	verticesIssued := 0
 	// Issue the txs
-	for time.Now().Sub(startTime) < testDuration {
+	for time.Now().Sub(startTime) < config.Duration {
 		t.processingVtxsCond.L.Lock()
 		for t.processingVtxs > t.MinProcessingVtxs {
 			// Wait until we process some vertices before issuing more
@@ -179,9 +178,10 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 		}
 		t.processingVtxsCond.L.Unlock()
 
-		// if i == config.NumTxs-1 || (i%config.LogFreq == 0 && i != 0) {
-		// 	t.Log.Info("sent %d of %d txs", (i+1)*config.BatchSize, config.NumTxs)
-		// }
+		verticesIssued++
+		if verticesIssued%config.LogFreq == 0 {
+			t.Log.Info("issud %d vertices", verticesIssued)
+		}
 	}
 	return nil, nil
 }
@@ -385,21 +385,6 @@ func (t *tester) generateTxs(assetID ids.ID, batchSize int, txBatchChan chan []*
 			txBatchChan <- txs
 		}
 	}
-}
-
-// nextTxs returns the next [n] txs to be sent as part of xput test
-// If there are less than [n] txs, returns all remaining txs
-// Returns error if there are no more transactions
-func (t *tester) nextTxs(n int) ([]*avm.Tx, error) {
-	if len(t.txs) == 0 {
-		return nil, errors.New("no remaining transactions")
-	}
-	if len(t.txs) < n { // There aren't [n] txs
-		return t.txs, nil // Return all remaining txs
-	}
-	txs := t.txs[:n]
-	t.txs = t.txs[n:]
-	return txs, nil
 }
 
 func (t *tester) String() string {
