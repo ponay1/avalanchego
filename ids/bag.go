@@ -89,6 +89,27 @@ func (b *Bag) AddCount(id ID, count int) {
 	}
 }
 
+// TODO delete this
+func (b *Bag) AddCountByKey(id [32]byte, count int) {
+	if count <= 0 {
+		return
+	}
+
+	b.init()
+
+	totalCount := b.counts[id] + count
+	b.counts[id] = totalCount
+	b.size += count
+
+	if totalCount > b.modeFreq {
+		b.mode = NewID(id)
+		b.modeFreq = totalCount
+	}
+	if totalCount >= b.threshold {
+		b.metThreshold.Add(NewID(id))
+	}
+}
+
 // Count returns the number of times the id has been added.
 func (b *Bag) Count(id ID) int {
 	b.init()
