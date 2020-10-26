@@ -25,7 +25,7 @@ import (
 
 const (
 	defaultBatchSize         = 10
-	defaultMaxProcessingVtxs = 50
+	defaultMinProcessingVtxs = 50
 )
 
 var errNoKey = errors.New("argument 'key' not given")
@@ -85,15 +85,15 @@ type RunArgs struct {
 
 	BatchSize json.Uint64 `json:"batchSize"`
 
-	MaxProcessingVtxs json.Uint64 `json:"maxProcessingVtxs"`
+	MinProcessingVtxs json.Uint64 `json:"minProcessingVtxs"`
 }
 
 // Run a throughput test. Only supports X-Chain right now.
 func (s *service) Run(_ *http.Request, args *RunArgs, reply *api.SuccessResponse) error {
 	s.log.Info("xput.run called")
 
-	if args.MaxProcessingVtxs == 0 {
-		args.MaxProcessingVtxs = defaultMaxProcessingVtxs
+	if args.MinProcessingVtxs == 0 {
+		args.MinProcessingVtxs = defaultMinProcessingVtxs
 	}
 
 	// Create the tester
@@ -105,7 +105,7 @@ func (s *service) Run(_ *http.Request, args *RunArgs, reply *api.SuccessResponse
 		Log:               s.log,
 		TxFee:             s.txFee,
 		AvaxAssetID:       s.avaxAssetID,
-		MaxProcessingVtxs: int(args.MaxProcessingVtxs),
+		MinProcessingVtxs: int(args.MinProcessingVtxs),
 	})
 	if err != nil {
 		return fmt.Errorf("couldn't create new tester: %w", err)
