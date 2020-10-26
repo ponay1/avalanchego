@@ -164,7 +164,7 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 
 		txs, err := t.nextTxs(config.BatchSize)
 		if err != nil {
-			t.Log.Info("ran out of transactions after issuing %d", i)
+			t.Log.Info("transaction issuance complete")
 			return nil, nil
 		}
 

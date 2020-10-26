@@ -141,8 +141,8 @@ func (s *service) Run(_ *http.Request, args *RunArgs, reply *api.SuccessResponse
 	}
 
 	logFreq := int(args.NumTxs) / 50
-	if logFreq > 1000 {
-		logFreq = 1000
+	if logFreq > 10000 {
+		logFreq = 10000
 	}
 	if logFreq == 0 {
 		logFreq = 1
