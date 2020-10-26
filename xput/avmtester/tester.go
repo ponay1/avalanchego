@@ -142,52 +142,48 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 		},
 	})
 
-	// Generate all the txs
-	if err := t.generateTxs(config.NumTxs, t.AvaxAssetID); err != nil {
-		return nil, fmt.Errorf("failed to generate txs: %s", err)
-	}
+	testDuration := 1 * time.Minute // TODO add this to config
+
+	// Spawn goroutine to create tx batches
+	txBatchChan := make(chan []*avm.Tx, 25) // todo replace 25 with constant
+	stopChan := make(chan struct{})
+	defer func() {
+		stopChan <- struct{}{}
+	}()
+	go t.generateTxs(t.AvaxAssetID, config.BatchSize, txBatchChan, stopChan)
 
 	startTime := time.Now()
+	var err error
 	// Issue the txs
-	for i := 0; i < config.NumTxs; i++ {
-		// don't spend more than 25 ms at a time issuing txs
-		// This ensures this validator still responds to queries on time
-		if time.Since(startTime) > 25*time.Millisecond {
-			time.Sleep(3 * time.Millisecond)
-			startTime = time.Now()
-		}
+	for time.Now().Sub(startTime) < testDuration {
 		t.processingVtxsCond.L.Lock()
 		for t.processingVtxs >= t.MaxProcessingVtxs {
 			// Wait until we process some vertices before issuing more
 			t.processingVtxsCond.Wait()
 		}
+		txBatch := <-txBatchChan
 
-		txs, err := t.nextTxs(config.BatchSize)
-		if err != nil {
-			t.Log.Info("transaction issuance complete")
-			return nil, nil
-		}
-
-		snowstormTxs := make([]snowstorm.Tx, len(txs))
-		for i, tx := range txs {
-			snowstormTxs[i], err = t.Engine.VM.ParseTx(tx.Bytes())
+		txs := make([]snowstorm.Tx, len(txBatch))
+		for i, tx := range txBatch {
+			txs[i], err = t.Engine.VM.ParseTx(tx.Bytes())
 			if err != nil {
 				t.processingVtxsCond.L.Unlock()
 				return nil, fmt.Errorf("failed to parse tx: %s", err)
 			}
 		}
 
-		if err := t.Engine.Issue(snowstormTxs); err != nil {
+		if err := t.Engine.Issue(txs); err != nil {
 			t.processingVtxsCond.L.Unlock()
 			return nil, fmt.Errorf("failed to issue tx: %s", err)
 		}
 		t.processingVtxsCond.L.Unlock()
 
-		if i == config.NumTxs-1 || (i%config.LogFreq == 0 && i != 0) {
-			t.Log.Info("sent %d of %d txs", (i+1)*config.BatchSize, config.NumTxs)
-		}
+		// if i == config.NumTxs-1 || (i%config.LogFreq == 0 && i != 0) {
+		// 	t.Log.Info("sent %d of %d txs", (i+1)*config.BatchSize, config.NumTxs)
+		// }
 	}
-
+	// Signal tx generator to stop
+	stopChan <- struct{}{}
 	return nil, nil
 }
 
@@ -245,7 +241,6 @@ func (t *tester) addUTXO(utxo *avax.UTXO) {
 	if !ok {
 		return
 	}
-
 	if _, _, err := t.keychain.Spend(out, stdmath.MaxUint64); err == nil {
 		t.utxoSet.Put(utxo)
 		t.balance[utxo.AssetID().Key()] += out.Amount()
@@ -279,7 +274,6 @@ func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr ids.ShortID, t
 	}
 
 	amountSpent := uint64(0)
-
 	ins := []*avax.TransferableInput{}
 	keys := [][]*crypto.PrivateKeySECP256K1R{}
 	for _, utxo := range t.utxoSet.UTXOs {
@@ -294,11 +288,10 @@ func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr ids.ShortID, t
 		if !ok {
 			continue
 		}
-		spent, err := math.Add64(amountSpent, input.Amount())
+		amountSpent, err = math.Add64(amountSpent, input.Amount())
 		if err != nil {
 			return nil, err
 		}
-		amountSpent = spent
 
 		in := &avax.TransferableInput{
 			UTXOID: utxo.UTXOID,
@@ -334,23 +327,6 @@ func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr ids.ShortID, t
 
 	if changeAmt := amountSpent - amount - t.TxFee; changeAmt > 0 {
 		numAddrs := len(t.addrs)
-		/*
-			// If there's a lot of change, split it among multiple addresses
-			for i := 0; i < 5 && changeAmt > t.TxFee; i++ {
-				outs = append(outs, &avax.TransferableOutput{
-					Asset: avax.Asset{ID: assetID},
-					Out: &secp256k1fx.TransferOutput{
-						Amt: t.TxFee,
-						OutputOwners: secp256k1fx.OutputOwners{
-							Locktime:  0,
-							Threshold: 1,
-							Addrs:     []ids.ShortID{t.addrs[rand.Intn(numAddrs)]},
-						},
-					},
-				})
-				changeAmt -= t.TxFee
-			}
-		*/
 		outs = append(outs, &avax.TransferableOutput{
 			Asset: avax.Asset{ID: assetID},
 			Out: &secp256k1fx.TransferOutput{
@@ -375,19 +351,9 @@ func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr ids.ShortID, t
 	return tx, tx.SignSECP256K1Fx(t.codec, keys)
 }
 
-// generateTxs generates transactions that will be sent during the test.
-// [numTxs] are generated. Each sends 1 unit of [assetID].
-func (t *tester) generateTxs(numTxs int, assetID ids.ID) error {
-	t.Log.Info("Generating %d transactions", numTxs)
-
-	frequency := numTxs / 50
-	if frequency > 10000 {
-		frequency = 10000
-	}
-	if frequency == 0 {
-		frequency = 1
-	}
-
+// generateTxs continuously generates tx batches of size [batchSize] and sends them over [txBatchChan]
+// Returns when an error occurs during tx creation (shouldn't happen) or when a message is received on [stopChan]
+func (t *tester) generateTxs(assetID ids.ID, batchSize int, txBatchChan chan []*avm.Tx, stopChan chan struct{}) error {
 	for i := 0; i < defaultNumAddrs; i++ {
 		addr, err := t.createAddress()
 		if err != nil {
@@ -397,29 +363,29 @@ func (t *tester) generateTxs(numTxs int, assetID ids.ID) error {
 	}
 
 	now := t.Clock.Unix()
-	t.txs = make([]*avm.Tx, numTxs)
-	for i := 0; i < numTxs; i++ {
-		tx, err := t.createTx(assetID, 1, ids.GenerateTestShortID(), now)
-		if err != nil {
-			return err
+	var err error
+	for {
+		// Make a batch of txs and send it over the channel
+		txs := make([]*avm.Tx, batchSize)
+		for i := 0; i < batchSize; i++ {
+			txs[i], err = t.createTx(assetID, 1, ids.GenerateTestShortID(), now)
+			if err != nil {
+				return err
+			}
+			for _, utxoID := range txs[i].InputUTXOs() {
+				t.removeUTXO(utxoID.InputID())
+			}
+			for _, utxo := range txs[i].UTXOs() {
+				t.addUTXO(utxo)
+			}
 		}
-		for _, utxoID := range tx.InputUTXOs() {
-			t.removeUTXO(utxoID.InputID())
+		select {
+		case <-stopChan:
+			return nil
+		default:
+			txBatchChan <- txs
 		}
-		for _, utxo := range tx.UTXOs() {
-			t.addUTXO(utxo)
-		}
-
-		// Periodically log progress
-		if numGenerated := i + 1; numGenerated%frequency == 0 {
-			t.Log.Info("Generated %d out of %d transactions. # UTXOs: %d", numGenerated, numTxs, len(t.utxoSet.UTXOs))
-		}
-
-		t.txs[i] = tx
 	}
-
-	t.Log.Info("Finished generating %d transactions", numTxs)
-	return nil
 }
 
 // nextTxs returns the next [n] txs to be sent as part of xput test
