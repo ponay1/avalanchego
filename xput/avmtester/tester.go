@@ -149,12 +149,17 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 		// Signal tx generator to stop when we're done
 		stopChan <- struct{}{}
 	}()
-	go t.generateTxs(t.AvaxAssetID, config.BatchSize, txBatchChan, stopChan)
+	go func() {
+		if err := t.generateTxs(t.AvaxAssetID, config.BatchSize, txBatchChan, stopChan); err != nil {
+			t.Log.Info("transaction generation errored: %s", err)
+		}
+	}()
 
 	startTime := time.Now()
 	var err error
 	verticesIssued := 0
 	// Issue the txs
+	t.Log.Info("starting throughput test. Will run for %s", config.Duration)
 	for time.Now().Sub(startTime) < config.Duration {
 		t.processingVtxsCond.L.Lock()
 		for t.processingVtxs > t.MinProcessingVtxs {
@@ -183,6 +188,7 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 			t.Log.Info("issued %d vertices", verticesIssued)
 		}
 	}
+	t.Log.Info("throughput test finished")
 	return nil, nil
 }
 
@@ -353,6 +359,7 @@ func (t *tester) createTx(assetID ids.ID, amount uint64, destAddr ids.ShortID, t
 // generateTxs continuously generates tx batches of size [batchSize] and sends them over [txBatchChan]
 // Returns when an error occurs during tx creation (shouldn't happen) or when a message is received on [stopChan]
 func (t *tester) generateTxs(assetID ids.ID, batchSize int, txBatchChan chan []*avm.Tx, stopChan chan struct{}) error {
+	t.Log.Info("starting transaction generation")
 	for i := 0; i < defaultNumAddrs; i++ {
 		addr, err := t.createAddress()
 		if err != nil {
@@ -380,6 +387,7 @@ func (t *tester) generateTxs(assetID ids.ID, batchSize int, txBatchChan chan []*
 		}
 		select {
 		case <-stopChan:
+			t.Log.Info("stopping transaction generation")
 			return nil
 		default:
 			txBatchChan <- txs
