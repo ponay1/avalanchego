@@ -143,7 +143,7 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 	})
 
 	// Spawn goroutine to create tx batches
-	txBatchChan := make(chan []*avm.Tx, 5*t.MinProcessingVtxs) // todo replace with constant
+	txBatchChan := make(chan []*avm.Tx, 5*t.MinProcessingVtxs)
 	stopChan := make(chan struct{})
 	defer func() {
 		// Signal tx generator to stop when we're done
@@ -180,7 +180,7 @@ func (t *tester) Run(configIntf interface{}) (interface{}, error) {
 
 		verticesIssued++
 		if verticesIssued%config.LogFreq == 0 {
-			t.Log.Info("issud %d vertices", verticesIssued)
+			t.Log.Info("issued %d vertices", verticesIssued)
 		}
 	}
 	return nil, nil
