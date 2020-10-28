@@ -89,6 +89,9 @@ type Network interface {
 	// must be managed internally to the network. Calling close multiple times
 	// will return a nil error.
 	Close() error
+
+	// Return the IP of the node
+	IP() utils.IPDesc
 }
 
 type network struct {
@@ -360,9 +363,8 @@ func (n *network) GetAccepted(validatorIDs ids.ShortSet, chainID ids.ID, request
 			err)
 		for validatorIDKey := range validatorIDs {
 			validatorID := ids.NewShortID(validatorIDKey)
-			vID := validatorID
 			n.executor.Add(func() {
-				n.router.GetAcceptedFailed(vID, chainID, requestID)
+				n.router.GetAcceptedFailed(validatorID, chainID, requestID)
 			})
 		}
 		return
@@ -517,8 +519,8 @@ func (n *network) PushQuery(validatorIDs ids.ShortSet, chainID ids.ID, requestID
 			err,
 			len(container))
 		n.log.Verbo("container: %s", formatting.DumpBytes{Bytes: container})
-		for _, validatorID := range validatorIDs.List() {
-			vID := validatorID
+		for validatorIDKey := range validatorIDs {
+			vID := ids.NewShortID(validatorIDKey)
 			n.executor.Add(func() { n.router.QueryFailed(vID, chainID, requestID) })
 		}
 		return // Packing message failed
@@ -731,6 +733,10 @@ func (n *network) Track(ip utils.IPDesc) {
 	defer n.stateLock.Unlock()
 
 	n.track(ip)
+}
+
+func (n *network) IP() utils.IPDesc {
+	return n.ip.IP()
 }
 
 // assumes the stateLock is not held.

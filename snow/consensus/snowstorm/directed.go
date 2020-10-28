@@ -24,11 +24,11 @@ type Directed struct {
 
 	// Key: Transaction ID
 	// Value: Node that represents this transaction in the conflict graph
-	txs map[[32]byte]*directedTx
+	txs map[ids.ID]*directedTx
 
 	// Key: UTXO ID
 	// Value: IDs of transactions that consume the UTXO specified in the key
-	utxos map[[32]byte]ids.Set
+	utxos map[ids.ID]ids.Set
 }
 
 type directedTx struct {
@@ -55,8 +55,8 @@ func (dg *Directed) Initialize(
 	ctx *snow.Context,
 	params sbcon.Parameters,
 ) error {
-	dg.txs = make(map[[32]byte]*directedTx)
-	dg.utxos = make(map[[32]byte]ids.Set)
+	dg.txs = make(map[ids.ID]*directedTx)
+	dg.utxos = make(map[ids.ID]ids.Set)
 
 	return dg.common.Initialize(ctx, params)
 }
@@ -86,7 +86,7 @@ func (dg *Directed) IsVirtuous(tx Tx) bool {
 
 // Conflicts implements the Consensus interface
 func (dg *Directed) Conflicts(tx Tx) ids.Set {
-	var conflicts ids.Set = nil
+	var conflicts ids.Set
 	if node, exists := dg.txs[tx.ID().Key()]; exists {
 		// If the tx is currently processing, the conflicting txs are just the
 		// union of the inbound conflicts and the outbound conflicts.
@@ -208,7 +208,6 @@ func (dg *Directed) RecordPoll(votes ids.Bag) (bool, error) {
 	// Get the set of IDs that meet this alpha threshold
 	metThreshold := votes.Threshold()
 	for txIDKey := range metThreshold {
-
 		// Get the node this tx represents
 		txNode, exist := dg.txs[txIDKey]
 		if !exist {

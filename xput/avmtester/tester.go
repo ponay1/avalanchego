@@ -219,15 +219,6 @@ func (t *tester) Reject(ctx *snow.Context, containerID ids.ID, container []byte)
 	return nil
 }
 
-// getAddress returns one of the addresses this wallet manages.
-// If no address exists, one will be created.
-func (t *tester) getAddress() (ids.ShortID, error) {
-	if t.keychain.Addrs.Len() == 0 {
-		return t.createAddress()
-	}
-	return t.keychain.Addrs.CappedList(1)[0], nil
-}
-
 // createAddress returns a new address.
 // It also saves the address and the private key that controls it
 // so the address can be used later

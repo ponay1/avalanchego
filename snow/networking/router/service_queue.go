@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
 )
 
@@ -244,12 +243,6 @@ func (ml *multiLevelQueue) placeMessage(msg message) bool {
 	// Find the highest index this message could be placed on and waterfall
 	// the message to lower queues if the higher ones are full
 	queueIndex := ml.getPriorityIndex(msg.validatorID)
-	if msg.messageType == constants.PullQueryMsg || msg.messageType == constants.PushQueryMsg || msg.messageType == constants.GetMsg {
-		queueIndex = 0 // todo remove this if block
-	} else if queueIndex < len(ml.queues)-1 {
-		queueIndex++ // deprioritize all messages other than queries and gets. todo remove this else block
-
-	}
 	return ml.waterfallMessage(msg, queueIndex)
 }
 

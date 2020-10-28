@@ -174,7 +174,7 @@ type VM struct {
 
 	// Key: block ID
 	// Value: the block
-	currentBlocks map[[32]byte]Block
+	currentBlocks map[ids.ID]Block
 
 	// fee that must be burned by every state creating transaction
 	creationTxFee uint64
@@ -359,7 +359,7 @@ func (vm *VM) Initialize(
 		}
 	}
 
-	vm.currentBlocks = make(map[[32]byte]Block)
+	vm.currentBlocks = make(map[ids.ID]Block)
 
 	if err := vm.initSubnets(); err != nil {
 		ctx.Log.Error("failed to initialize Subnets: %s", err)
@@ -1056,9 +1056,8 @@ func (vm *VM) GetAtomicUTXOs(
 	addrsList := make([][]byte, addrs.Len())
 	i := 0
 	for addr := range addrs {
-		copied := make([]byte, 20)
-		copy(copied, addr[:])
-		addrsList[i] = copied
+		copied := addr
+		addrsList[i] = copied[:]
 		i++
 	}
 

@@ -13,11 +13,11 @@ const (
 )
 
 // UniqueBag ...
-type UniqueBag map[[32]byte]BitSet
+type UniqueBag map[ID]BitSet
 
 func (b *UniqueBag) init() {
 	if *b == nil {
-		*b = make(map[[32]byte]BitSet, minUniqueBagSize)
+		*b = make(map[ID]BitSet, minUniqueBagSize)
 	}
 }
 
@@ -64,7 +64,7 @@ func (b *UniqueBag) Difference(diff *UniqueBag) {
 }
 
 // GetSet ...
-func (b *UniqueBag) GetSet(id ID) BitSet { return (*b)[*id.ID] }
+func (b *UniqueBag) GetSet(id ID) BitSet { return (*b)[id] }
 
 // RemoveSet ...
 func (b *UniqueBag) RemoveSet(id ID) { delete(*b, id.Key()) }

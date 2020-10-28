@@ -135,6 +135,7 @@ type ManagerConfig struct {
 	AVAXAssetID             ids.ID
 	XChainID                ids.ID
 	CriticalChains          ids.Set          // Chains that can't exit gracefully
+	WhitelistedSubnets      ids.Set          // Subnets to validate
 	TimeoutManager          *timeout.Manager // Manages request timeouts when sending messages to other validators
 	HealthService           *health.Health
 }
@@ -154,14 +155,14 @@ type manager struct {
 
 	// Key: Chain's ID
 	// Value: The chain
-	chains map[[32]byte]*router.Handler
+	chains map[ids.ID]*router.Handler
 }
 
 // New returns a new Manager with the given config
 func New(config *ManagerConfig) Manager {
 	m := &manager{
 		ManagerConfig: *config,
-		chains:        make(map[[32]byte]*router.Handler),
+		chains:        make(map[ids.ID]*router.Handler),
 	}
 	m.Initialize()
 	return m
@@ -195,6 +196,15 @@ func (m *manager) GetChain(id ids.ID) (*router.Handler, error) {
 
 // Create a chain
 func (m *manager) ForceCreateChain(chainParams ChainParameters) {
+	if !m.WhitelistedSubnets.Contains(chainParams.SubnetID) {
+		m.Log.Debug("Skipped creating non-whitelisted chain:\n"+
+			"    ID: %s\n"+
+			"    VMID:%s",
+			chainParams.ID,
+			chainParams.VMAlias,
+		)
+		return
+	}
 	// Assert that there isn't already a chain with an alias in [chain].Aliases
 	// (Recall that the string repr. of a chain's ID is also an alias for a chain)
 	if alias, isRepeat := m.isChainWithAlias(chainParams.ID.String()); isRepeat {

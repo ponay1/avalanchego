@@ -13,9 +13,9 @@ import (
 
 // UTXOSet is a set of UTXOs
 type UTXOSet struct {
-	// Key: The ID of a UTXO
-	// Value: The index in [UTXOs] of that UTXO
-	utxoMap map[[32]byte]int
+	// Key: The id of a UTXO
+	// Value: The index in UTXOs of that UTXO
+	utxoMap map[ids.ID]int
 
 	// List of UTXOs in this set
 	// This can be used to iterate over. It should not be modified externally.
@@ -25,7 +25,7 @@ type UTXOSet struct {
 // Put a UTXO in this UTXO set
 func (us *UTXOSet) Put(utxo *avax.UTXO) {
 	if us.utxoMap == nil {
-		us.utxoMap = make(map[[32]byte]int)
+		us.utxoMap = make(map[ids.ID]int)
 	}
 	utxoID := utxo.InputID()
 	utxoKey := utxoID.Key()

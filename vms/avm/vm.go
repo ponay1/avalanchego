@@ -277,7 +277,7 @@ func (vm *VM) Initialize(
 	vm.batchTimeout = batchTimeout
 
 	vm.walletService.vm = vm
-	vm.walletService.pendingTxMap = make(map[[32]byte]*list.Element)
+	vm.walletService.pendingTxMap = make(map[ids.ID]*list.Element)
 	vm.walletService.pendingTxOrdering = list.New()
 
 	return vm.db.Commit()
@@ -442,9 +442,8 @@ func (vm *VM) GetAtomicUTXOs(
 	addrsList := make([][]byte, addrs.Len())
 	i := 0
 	for addr := range addrs {
-		copied := make([]byte, 20)
-		copy(copied, addr[:])
-		addrsList[i] = copied
+		copied := addr
+		addrsList[i] = copied[:]
 		i++
 	}
 
@@ -733,10 +732,13 @@ func (vm *VM) getFx(val interface{}) (int, error) {
 }
 
 func (vm *VM) verifyFxUsage(fxID int, assetID ids.ID) bool {
+	// Check cache to see whether this asset supports this fx
 	fxIDsIntf, assetInCache := vm.assetToFxCache.Get(assetID)
-	if assetInCache && fxIDsIntf.(ids.BitSet).Contains(uint(fxID)) {
-		return true
+	if assetInCache {
+		return fxIDsIntf.(ids.BitSet).Contains(uint(fxID))
 	}
+	// Caches doesn't say whether this asset support this fx.
+	// Get the tx that created the asset and check.
 	tx := &UniqueTx{
 		vm:   vm,
 		txID: assetID,
@@ -746,23 +748,18 @@ func (vm *VM) verifyFxUsage(fxID int, assetID ids.ID) bool {
 	}
 	createAssetTx, ok := tx.UnsignedTx.(*CreateAssetTx)
 	if !ok {
+		// This transaction was not an asset creation tx
 		return false
 	}
-	// TODO: This could be a binary search to improve performance... Or perhaps
-	// make a map
+	fxIDs := ids.BitSet(0)
 	for _, state := range createAssetTx.States {
 		if state.FxID == uint32(fxID) {
 			// Cache that this asset supports this fx
-			fxIDs := ids.BitSet(0)
-			if assetInCache {
-				fxIDs = fxIDsIntf.(ids.BitSet)
-			}
 			fxIDs.Add(uint(fxID))
-			vm.assetToFxCache.Put(assetID, fxIDs)
-			return true
 		}
 	}
-	return false
+	vm.assetToFxCache.Put(assetID, fxIDs)
+	return fxIDs.Contains(uint(fxID))
 }
 
 func (vm *VM) verifyTransferOfUTXO(tx UnsignedTx, in *avax.TransferableInput, cred verify.Verifiable, utxo *avax.UTXO) error {
@@ -882,14 +879,14 @@ func (vm *VM) LoadUser(
 func (vm *VM) Spend(
 	utxos []*avax.UTXO,
 	kc *secp256k1fx.Keychain,
-	amounts map[[32]byte]uint64,
+	amounts map[ids.ID]uint64,
 ) (
-	map[[32]byte]uint64,
+	map[ids.ID]uint64,
 	[]*avax.TransferableInput,
 	[][]*crypto.PrivateKeySECP256K1R,
 	error,
 ) {
-	amountsSpent := make(map[[32]byte]uint64, len(amounts))
+	amountsSpent := make(map[ids.ID]uint64, len(amounts))
 	time := vm.clock.Unix()
 
 	ins := []*avax.TransferableInput{}
@@ -1026,12 +1023,12 @@ func (vm *VM) SpendAll(
 	utxos []*avax.UTXO,
 	kc *secp256k1fx.Keychain,
 ) (
-	map[[32]byte]uint64,
+	map[ids.ID]uint64,
 	[]*avax.TransferableInput,
 	[][]*crypto.PrivateKeySECP256K1R,
 	error,
 ) {
-	amountsSpent := make(map[[32]byte]uint64)
+	amountsSpent := make(map[ids.ID]uint64)
 	time := vm.clock.Unix()
 
 	ins := []*avax.TransferableInput{}
@@ -1076,7 +1073,7 @@ func (vm *VM) SpendAll(
 func (vm *VM) Mint(
 	utxos []*avax.UTXO,
 	kc *secp256k1fx.Keychain,
-	amounts map[[32]byte]uint64,
+	amounts map[ids.ID]uint64,
 	to ids.ShortID,
 ) (
 	[]*Operation,

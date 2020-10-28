@@ -61,29 +61,7 @@ func (s *Serializer) Initialize(ctx *snow.Context, vm vertex.DAGVM, db database.
 
 // ParseVertex implements the avalanche.State interface
 func (s *Serializer) ParseVertex(b []byte) (avalanche.Vertex, error) {
-	// We might have already parsed this vertex
-	vtxID := ids.NewID(hashing.ComputeHash256Array(b))
-	uVtx := &uniqueVertex{
-		serializer: s,
-		vtxID:      vtxID,
-	}
-	if uVtx.Status() != choices.Unknown {
-		// We already have this vertex; return it
-		return uVtx, nil
-	}
-
-	// We haven't parsed this vertex before
-	vtx, err := s.parseVertex(b)
-	if err != nil {
-		return nil, err
-	}
-	if err := vtx.Verify(); err != nil {
-		return nil, err
-	}
-	if err := uVtx.setVertex(vtx); err != nil {
-		return nil, err
-	}
-	return uVtx, s.db.Commit()
+	return newUniqueVertex(s, b)
 }
 
 // BuildVertex implements the avalanche.State interface
@@ -126,15 +104,9 @@ func (s *Serializer) BuildVertex(parentIDs []ids.ID, txs []snowstorm.Tx) (avalan
 		serializer: s,
 		vtxID:      vtx.ID(),
 	}
-	// It is possible this vertex already exists in the database, even though we
-	// just made it.
-	if uVtx.Status() == choices.Unknown {
-		if err := uVtx.setVertex(vtx); err != nil {
-			return nil, err
-		}
-	}
-
-	return uVtx, s.db.Commit()
+	// setVertex handles the case where this vertex already exists even
+	// though we just made it
+	return uVtx, uVtx.setVertex(vtx)
 }
 
 // GetVertex implements the avalanche.State interface

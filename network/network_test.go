@@ -23,6 +23,8 @@ import (
 	"github.com/ava-labs/avalanchego/version"
 )
 
+const defaultSendQueueSize = 5000
+
 var (
 	errClosed  = errors.New("closed")
 	errRefused = errors.New("connection refused")
@@ -206,6 +208,7 @@ func TestNewDefaultNetwork(t *testing.T) {
 		handler,
 		time.Duration(0),
 		0,
+		defaultSendQueueSize,
 	)
 	assert.NotNil(t, net)
 
@@ -314,6 +317,7 @@ func TestEstablishConnection(t *testing.T) {
 		handler0,
 		time.Duration(0),
 		0,
+		defaultSendQueueSize,
 	)
 	assert.NotNil(t, net0)
 
@@ -334,6 +338,7 @@ func TestEstablishConnection(t *testing.T) {
 		handler1,
 		time.Duration(0),
 		0,
+		defaultSendQueueSize,
 	)
 	assert.NotNil(t, net1)
 
@@ -454,6 +459,7 @@ func TestDoubleTrack(t *testing.T) {
 		handler0,
 		time.Duration(0),
 		0,
+		defaultSendQueueSize,
 	)
 	assert.NotNil(t, net0)
 
@@ -474,6 +480,7 @@ func TestDoubleTrack(t *testing.T) {
 		handler1,
 		time.Duration(0),
 		0,
+		defaultSendQueueSize,
 	)
 	assert.NotNil(t, net1)
 
@@ -595,6 +602,7 @@ func TestDoubleClose(t *testing.T) {
 		handler0,
 		time.Duration(0),
 		0,
+		defaultSendQueueSize,
 	)
 	assert.NotNil(t, net0)
 
@@ -615,6 +623,7 @@ func TestDoubleClose(t *testing.T) {
 		handler1,
 		time.Duration(0),
 		0,
+		defaultSendQueueSize,
 	)
 	assert.NotNil(t, net1)
 
@@ -741,6 +750,7 @@ func TestTrackConnected(t *testing.T) {
 		handler0,
 		time.Duration(0),
 		0,
+		defaultSendQueueSize,
 	)
 	assert.NotNil(t, net0)
 
@@ -761,6 +771,7 @@ func TestTrackConnected(t *testing.T) {
 		handler1,
 		time.Duration(0),
 		0,
+		defaultSendQueueSize,
 	)
 	assert.NotNil(t, net1)
 
@@ -861,6 +872,7 @@ func TestTrackConnectedRace(t *testing.T) {
 		handler,
 		time.Duration(0),
 		0,
+		defaultSendQueueSize,
 	)
 	assert.NotNil(t, net0)
 
@@ -881,6 +893,7 @@ func TestTrackConnectedRace(t *testing.T) {
 		handler,
 		time.Duration(0),
 		0,
+		defaultSendQueueSize,
 	)
 	assert.NotNil(t, net1)
 
